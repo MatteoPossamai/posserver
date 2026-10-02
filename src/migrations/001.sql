@@ -1,0 +1,17 @@
+PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;
+BEGIN IMMEDIATE;
+CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,name TEXT NOT NULL,language TEXT NOT NULL CHECK(language IN ('en','it')),timezone TEXT NOT NULL,reporting_currency TEXT NOT NULL CHECK(reporting_currency IN ('GBP','EUR','USD')),category_profile TEXT NOT NULL CHECK(category_profile IN ('personal','dad')),version INTEGER NOT NULL CHECK(version>0),rates TEXT NOT NULL DEFAULT '[]');
+CREATE TABLE IF NOT EXISTS monzo_links(user_id TEXT PRIMARY KEY REFERENCES users(id),account_id TEXT NOT NULL UNIQUE);
+CREATE TABLE IF NOT EXISTS monzo_sync(user_id TEXT PRIMARY KEY REFERENCES users(id),account_id TEXT NOT NULL,last_transaction_id TEXT,last_created_at INTEGER,seed_since INTEGER);
+CREATE TABLE IF NOT EXISTS legacy_batches(id TEXT PRIMARY KEY,user_id TEXT NOT NULL UNIQUE REFERENCES users(id),source_sha256 TEXT NOT NULL,row_count INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS transactions(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),occurred_at INTEGER NOT NULL,category_id TEXT NOT NULL,issuer TEXT NOT NULL,amount_minor INTEGER NOT NULL CHECK(amount_minor BETWEEN -9007199254740991 AND 9007199254740991),currency TEXT NOT NULL CHECK(currency IN ('GBP','EUR','USD')),source TEXT NOT NULL CHECK(source IN ('manual','legacy_csv','monzo')),version INTEGER NOT NULL DEFAULT 1 CHECK(version>0),deleted_at INTEGER,monzo_account_id TEXT,monzo_transaction_id TEXT,legacy_batch_id TEXT REFERENCES legacy_batches(id),legacy_row_ordinal INTEGER,original_category TEXT, UNIQUE(legacy_batch_id,legacy_row_ordinal));
+CREATE UNIQUE INDEX IF NOT EXISTS provider_identity ON transactions(user_id,monzo_account_id,monzo_transaction_id) WHERE monzo_transaction_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS transaction_date ON transactions(user_id,occurred_at,id);
+CREATE INDEX IF NOT EXISTS transaction_category ON transactions(user_id,category_id,occurred_at);
+CREATE TABLE IF NOT EXISTS revision(singleton INTEGER PRIMARY KEY CHECK(singleton=1),value INTEGER NOT NULL);
+INSERT OR IGNORE INTO revision VALUES(1,0);
+CREATE TABLE IF NOT EXISTS backup_outbox(revision INTEGER PRIMARY KEY,state TEXT NOT NULL DEFAULT 'pending',created_at INTEGER NOT NULL,snapshot_path TEXT,sha256 TEXT,attempts INTEGER NOT NULL DEFAULT 0,error_code TEXT);
+CREATE INDEX IF NOT EXISTS backup_pending ON backup_outbox(state,created_at);
+CREATE TABLE IF NOT EXISTS operational(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+PRAGMA user_version=1;
+COMMIT;

@@ -1,0 +1,121 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #14283a;
+  background: #f3f6fa;
+}
+body {
+  max-width: 1000px;
+  margin: auto;
+  padding: 16px;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+h1 {
+  font-size: 1.5rem;
+  margin-right: auto;
+}
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 20px 0;
+}
+button,
+input,
+select {
+  font: inherit;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid #bcc9d7;
+  border-radius: 8px;
+  padding: 10px;
+}
+button {
+  cursor: pointer;
+  background: white;
+  color: #153752;
+}
+button:hover {
+  background: #e6eef7;
+}
+label {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0;
+}
+form,
+article,
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin: 16px 0;
+  box-shadow: 0 2px 8px #14283a0a;
+}
+form {
+  max-width: 600px;
+}
+input,
+select {
+  width: 100%;
+  background: white;
+}
+button[type="submit"] {
+  background: #205b89;
+  color: white;
+}
+#menu {
+  flex-basis: 100%;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+#menu[hidden] {
+  display: none;
+}
+.error {
+  color: #9b1b27;
+}
+.totals {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.totals > * {
+  flex: 1;
+  min-width: 140px;
+}
+.row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.row span {
+  margin-right: auto;
+}
+svg {
+  width: 100%;
+  height: 200px;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+td,
+th {
+  text-align: left;
+  padding: 10px;
+  border-bottom: 1px solid #e3e9f0;
+}
+a {
+  color: #205b89;
+}
+aside {
+  font-size: 0.9rem;
+  color: #41556d;
+}

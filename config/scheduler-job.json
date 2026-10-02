@@ -1,0 +1,6 @@
+{
+  "name": "posserver-drive-backup",
+  "every_seconds": 3600,
+  "timeout_seconds": 90,
+  "command": "\"$PREFIX/apps/posserver/current/posserver\" backup-drive --db \"$PREFIX/data/posserver/database.sqlite\" --config \"$PREFIX/data/posserver/config.json\""
+}

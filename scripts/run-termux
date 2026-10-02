@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+: "${PREFIX:?Run this service in native Termux}"
+POSSERVER_SERVICE_DATA="${POSSERVER_DATA_DIR:-$PREFIX/data/posserver}"
+POSSERVER_APP="$PREFIX/apps/posserver"
+POSSERVER_SERVICE_BIND="${POSSERVER_BIND:-$(cat "$POSSERVER_APP/bind")}"
+mkdir -p "$POSSERVER_SERVICE_DATA"
+umask 077
+exec >> "$POSSERVER_SERVICE_DATA/server.log" 2>&1
+exec "$POSSERVER_APP/current/posserver" serve \
+  --db "$POSSERVER_SERVICE_DATA/database.sqlite" \
+  --config "$POSSERVER_SERVICE_DATA/config.json" \
+  --bind "$POSSERVER_SERVICE_BIND"

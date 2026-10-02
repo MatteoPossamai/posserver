@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""Build and control posserver over ordinary SSH; never upload local runtime data."""
+import argparse
+import io
+import json
+from pathlib import Path
+import shlex
+import subprocess
+import tarfile
+import uuid
+import ipaddress
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def ssh(host, command, **kwargs):
+    return subprocess.run(
+        ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', host, command],
+        check=True, **kwargs,
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=['deploy', 'start', 'stop', 'restart', 'status', 'logs', 'rollback', 'configure'])
+    parser.add_argument('--host', default='phone', help='existing SSH alias (default: phone)')
+    parser.add_argument('--bind', default='127.0.0.1:8080', help='deploy listener; use a private Tailscale address for remote access')
+    parser.add_argument('--vault', type=Path, help='configure: encrypted runtime JSON file')
+    parser.add_argument('--vault-password-file', type=Path, help='configure: password file outside Git; otherwise prompt')
+    args = parser.parse_args()
+    if not args.host or args.host.startswith('-') or any(c.isspace() for c in args.host):
+        parser.error('invalid SSH host')
+    if args.action == 'deploy':
+        try:
+            address, port = args.bind.rsplit(':', 1)
+            ipaddress.IPv4Address(address)
+            if not 1 <= int(port) <= 65535:
+                raise ValueError()
+        except ValueError:
+            parser.error('--bind must be an IPv4 address and port')
+    base = 'set -eu\numask 077\n: "${PREFIX:?Native Termux required}"\napp="$PREFIX/apps/posserver"\nservice="$PREFIX/var/service/posserver"\ndata="$PREFIX/data/posserver"\n'
+    if args.action == 'deploy':
+        release = uuid.uuid4().hex
+        archive = io.BytesIO()
+        with tarfile.open(fileobj=archive, mode='w:gz') as tar:
+            for name in ['Cargo.toml', 'Cargo.lock', 'src', 'web', 'docs/categories.json', 'config/example.json', 'scripts/run-termux']:
+                tar.add(ROOT / name, arcname=name)
+        command = base + '''command -v cargo >/dev/null
+command -v clang >/dev/null
+command -v sv >/dev/null
+command -v curl >/dev/null
+mkdir -p "$app/releases" "$app/build" "$data"
+# Serialize deployment, including build and activation.
+command -v flock >/dev/null
+exec 9>"$app/deploy.lock"
+flock -n 9 || { echo 'Another deployment is active' >&2; exit 1; }
+release="$app/releases/RELEASE"
+mkdir "$release"
+tar -xzf - -C "$release"
+cd "$release"
+CARGO_TARGET_DIR="$app/build" CARGO_BUILD_JOBS=1 cargo build --release --locked --bin posserver
+install -m 755 "$app/build/release/posserver" "$release/posserver"
+"$release/posserver" --help >/dev/null
+if [ ! -f "$data/config.json" ]; then
+    install -m 600 config/example.json "$data/config.json"
+fi
+mkdir -p "$service"
+touch "$service/down"
+# Build succeeds before stopping the old binary.
+if [ -f "$service/run" ]; then sv -w 20 down "$service"; fi
+if [ -L "$app/current" ]; then
+    readlink "$app/current" > "$app/previous"
+    cp "$app/bind" "$app/previous-bind"
+fi
+rm -f "$app/current.new"
+ln -s "$release" "$app/current.new"
+mv -Tf "$app/current.new" "$app/current"
+printf '%s\\n' BIND > "$app/bind"
+# The interpreter must be native Termux, rather than /usr/bin/env on Android.
+printf '#!%s/bin/bash\\nexec "%s/apps/posserver/current/scripts/run-termux"\\n' "$PREFIX" "$PREFIX" > "$service/run"
+# run-termux also needs a native interpreter when run directly.
+sed -i "1c\\\\#!$PREFIX/bin/bash" "$release/scripts/run-termux"
+chmod 700 "$service/run" "$release/scripts/run-termux"
+rm -f "$service/down"
+for attempt in $(seq 1 10); do
+    [ -p "$service/supervise/ok" ] && break
+    sleep 1
+done
+sv -w 20 up "$service"
+ready=false
+for attempt in $(seq 1 20); do
+    if curl --fail --silent --max-time 2 HEALTH_URL/healthz >/dev/null; then ready=true; break; fi
+    sleep 1
+done
+if [ "$ready" != true ]; then
+    sv -w 20 down "$service"
+    touch "$service/down"
+    if [ -f "$app/previous" ] && [ -f "$app/previous-bind" ]; then
+        previous=$(cat "$app/previous")
+        ln -s "$previous" "$app/current.new"
+        mv -Tf "$app/current.new" "$app/current"
+        cp "$app/previous-bind" "$app/bind"
+        rm -f "$service/down"
+        sv -w 20 up "$service"
+        echo 'New release failed readiness; previous release restarted. Inspect logs.' >&2
+    else
+        echo 'Readiness failed; service stopped. Inspect logs.' >&2
+    fi
+    exit 1
+fi
+echo 'Installed and ready (loopback requires an SSH tunnel for laptop access).'
+sv status "$service"
+'''.replace('RELEASE', release).replace('BIND', shlex.quote(args.bind)).replace('HEALTH_URL', shlex.quote('http://' + ('127.0.0.1:' + port if address == '0.0.0.0' else args.bind)))
+        ssh(args.host, command, input=archive.getvalue())
+    elif args.action == 'configure':
+        if not args.vault or not args.vault.read_bytes().startswith(b'$ANSIBLE_VAULT;'):
+            parser.error('configure requires an Ansible Vault encrypted file')
+        vault_command = ['ansible-vault', 'view', str(args.vault)]
+        vault_command += ['--vault-password-file', str(args.vault_password_file)] if args.vault_password_file else ['--ask-vault-pass']
+        result = subprocess.run(vault_command, check=True, stdout=subprocess.PIPE)
+        config = json.loads(result.stdout)
+        if not isinstance(config, dict):
+            parser.error('runtime configuration must be a JSON object')
+        ssh(args.host, base + '''mkdir -p "$data"
+tmp=$(mktemp "$data/config.XXXXXXXX")
+trap 'rm -f "$tmp"' EXIT
+cat > "$tmp"
+chmod 600 "$tmp"
+mv -f "$tmp" "$data/config.json"
+echo 'Configuration installed; run restart to apply.'
+''', input=result.stdout)
+    elif args.action == 'logs':
+        ssh(args.host, base + 'tail -n 100 "$data/server.log"')
+    elif args.action == 'rollback':
+        ssh(args.host, base + '''exec 9>"$app/deploy.lock"
+flock -n 9
+previous=$(cat "$app/previous")
+test -x "$previous/posserver"
+sv -w 20 down "$service"
+current=$(readlink "$app/current")
+cp "$app/bind" "$app/bind.swap"
+cp "$app/previous-bind" "$app/bind"
+mv "$app/bind.swap" "$app/previous-bind"
+rm -f "$app/current.new"
+ln -s "$previous" "$app/current.new"
+mv -Tf "$app/current.new" "$app/current"
+printf '%s\\n' "$current" > "$app/previous"
+rm -f "$service/down"
+sv -w 20 up "$service"
+''')
+    else:
+        action = args.action
+        command = {'start': 'rm -f "$service/down"; sv -w 20 up "$service"',
+                   'stop': 'touch "$service/down"; sv -w 20 down "$service"',
+                   'restart': 'rm -f "$service/down"; sv -w 20 restart "$service"',
+                   'status': 'sv status "$service"'}[action]
+        ssh(args.host, base + command)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (subprocess.CalledProcessError, OSError, ValueError) as error:
+        raise SystemExit(f'Deployment command failed: {type(error).__name__}; see preceding output.') from None

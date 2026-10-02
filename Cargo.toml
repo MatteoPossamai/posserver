@@ -1,0 +1,36 @@
+[package]
+name = "posserver"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autotests = false
+
+[[test]]
+name = "contract"
+path = "tests/contract.rs"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "time", "sync", "process"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+sha2 = "0.10"
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+uuid = { version = "1", features = ["v4"] }
+csv = "1"
+base64 = "0.22"
+clap = { version = "4", features = ["derive"] }
+fs2 = "0.4"
+prometheus = "0.14"
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+tiny_http = "0.12"
+
+[[test]]
+name = "operational"
+path = "tests/operational.rs"

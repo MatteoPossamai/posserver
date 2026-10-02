@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>posserver</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>posserver</h1>
+      <button data-testid="user-menu" id="user-menu">Users</button
+      ><strong data-testid="selected-user" id="selected-user"></strong>
+      <div id="menu" hidden></div>
+    </header>
+    <nav id="nav"></nav>
+    <aside id="backup" aria-live="polite"></aside>
+    <main id="main"></main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

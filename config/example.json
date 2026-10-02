@@ -1,0 +1,10 @@
+{
+  "monzo": {
+    "base_url": "https://api.monzo.com",
+    "links_by_user_id": {},
+    "max_objects": 100000
+  },
+  "backup": {
+    "automatic": true
+  }
+}

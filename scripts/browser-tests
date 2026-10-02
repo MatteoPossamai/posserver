@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""Run the preserved browser contracts against an isolated real posserver process."""
+import json
+import os
+from pathlib import Path
+import socket
+import subprocess
+import tempfile
+import time
+import urllib.request
+
+root = Path(__file__).resolve().parent.parent
+binary = Path(os.environ.get("POSSERVER_BIN", root / "target/debug/posserver"))
+if not binary.is_file():
+    raise SystemExit("Build posserver first, or set POSSERVER_BIN to its absolute path.")
+with tempfile.TemporaryDirectory(prefix="posserver-browser-") as directory:
+    directory = Path(directory)
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    url = f"http://127.0.0.1:{port}"
+    config = directory / "config.json"
+    config.write_text(json.dumps({
+        "monzo": {"links_by_user_name": {
+            "WebMonzoSuccess": "acc_web_success", "WebMonzoFailure": "acc_web_failure",
+        }},
+        "backup": {"automatic": False},
+    }))
+    with (directory / "server.log").open("wb") as log:
+        child = subprocess.Popen([
+            str(binary), "serve", "--db", str(directory / "database.sqlite"),
+            "--bind", f"127.0.0.1:{port}", "--config", str(config),
+        ], stdout=log, stderr=log)
+        try:
+            deadline = time.monotonic() + 10
+            while True:
+                try:
+                    with urllib.request.urlopen(url + "/healthz", timeout=1) as response:
+                        if response.status == 200:
+                            break
+                except OSError:
+                    pass
+                if child.poll() is not None or time.monotonic() >= deadline:
+                    raise RuntimeError((directory / "server.log").read_text())
+                time.sleep(0.05)
+            result = subprocess.run(["npm", "test"], cwd=root / "tests/web",
+                                    env=dict(os.environ, POSSERVER_WEB_URL=url), check=False)
+        finally:
+            child.terminate()
+            try:
+                child.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait()
+        raise SystemExit(result.returncode)

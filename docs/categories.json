@@ -1,0 +1,459 @@
+{
+  "normalization": "trim, lowercase, collapse whitespace to underscore, then explicit aliases",
+  "aliases": {
+    "dress": "clothes",
+    "hairs": "hair",
+    "leasure": "leisure",
+    "lesuire": "leisure",
+    "pharma": "pharmacy",
+    "present": "gifts",
+    "presents": "gifts",
+    "reinboursement": "reimbursement",
+    "reimboursement": "reimbursement",
+    "telephone": "phone",
+    "trasport": "transport",
+    "vacation": "holidays",
+    "mondo": "income"
+  },
+  "observed_csv_labels": [
+    "bathroom",
+    "beauty",
+    "bike",
+    "bills",
+    "bonus",
+    "books",
+    "cable",
+    "cash",
+    "charity",
+    "clothes",
+    "dental",
+    "documents",
+    "dress",
+    "eating out",
+    "eating_out",
+    "electronics",
+    "entertainment",
+    "expenses",
+    "experiences",
+    "facilities",
+    "fitness",
+    "food",
+    "general",
+    "gifts",
+    "groceries",
+    "groceries ",
+    "gym",
+    "hair",
+    "hairs",
+    "hardware",
+    "health",
+    "holidays",
+    "home",
+    "income",
+    "inheritance",
+    "language",
+    "leasure",
+    "leisure",
+    "lesuire",
+    "miscellaneous",
+    "personal_care",
+    "pharma",
+    "pharmacy",
+    "phone",
+    "present",
+    "presents",
+    "refund",
+    "reimboursement",
+    "reinboursement",
+    "rent",
+    "salary",
+    "service",
+    "shopping",
+    "sport",
+    "stipend",
+    "study",
+    "supplements",
+    "tax_refund",
+    "taxes",
+    "telephone",
+    "transport",
+    "transport ",
+    "trasport",
+    "travel",
+    "university",
+    "utilities",
+    "vacation",
+    "wellness",
+    "work",
+    "work_payment"
+  ],
+  "personal": [
+    {
+      "id": "bathroom",
+      "en": "Bathroom",
+      "it": "Bagno"
+    },
+    {
+      "id": "beauty",
+      "en": "Beauty",
+      "it": "Bellezza"
+    },
+    {
+      "id": "bike",
+      "en": "Bike",
+      "it": "Bicicletta"
+    },
+    {
+      "id": "bills",
+      "en": "Bills",
+      "it": "Bollette"
+    },
+    {
+      "id": "bonus",
+      "en": "Bonus",
+      "it": "Bonus"
+    },
+    {
+      "id": "books",
+      "en": "Books",
+      "it": "Libri"
+    },
+    {
+      "id": "cable",
+      "en": "Cable",
+      "it": "Cavo / abbonamento TV"
+    },
+    {
+      "id": "cash",
+      "en": "Cash",
+      "it": "Contanti"
+    },
+    {
+      "id": "charity",
+      "en": "Charity",
+      "it": "Beneficenza"
+    },
+    {
+      "id": "clothes",
+      "en": "Clothes",
+      "it": "Abbigliamento"
+    },
+    {
+      "id": "dental",
+      "en": "Dental",
+      "it": "Dentista"
+    },
+    {
+      "id": "documents",
+      "en": "Documents",
+      "it": "Documenti"
+    },
+    {
+      "id": "eating_out",
+      "en": "Eating out",
+      "it": "Mangiare fuori"
+    },
+    {
+      "id": "electronics",
+      "en": "Electronics",
+      "it": "Elettronica"
+    },
+    {
+      "id": "entertainment",
+      "en": "Entertainment",
+      "it": "Intrattenimento"
+    },
+    {
+      "id": "expenses",
+      "en": "Expenses",
+      "it": "Spese"
+    },
+    {
+      "id": "experiences",
+      "en": "Experiences",
+      "it": "Esperienze"
+    },
+    {
+      "id": "facilities",
+      "en": "Facilities",
+      "it": "Servizi e strutture"
+    },
+    {
+      "id": "fitness",
+      "en": "Fitness",
+      "it": "Fitness"
+    },
+    {
+      "id": "food",
+      "en": "Food",
+      "it": "Cibo"
+    },
+    {
+      "id": "general",
+      "en": "General",
+      "it": "Generale"
+    },
+    {
+      "id": "gifts",
+      "en": "Gifts",
+      "it": "Regali"
+    },
+    {
+      "id": "groceries",
+      "en": "Groceries",
+      "it": "Spesa alimentare"
+    },
+    {
+      "id": "gym",
+      "en": "Gym",
+      "it": "Palestra"
+    },
+    {
+      "id": "hair",
+      "en": "Hair",
+      "it": "Parrucchiere"
+    },
+    {
+      "id": "hardware",
+      "en": "Hardware",
+      "it": "Attrezzatura"
+    },
+    {
+      "id": "health",
+      "en": "Health",
+      "it": "Salute"
+    },
+    {
+      "id": "holidays",
+      "en": "Holidays",
+      "it": "Vacanze"
+    },
+    {
+      "id": "home",
+      "en": "Home",
+      "it": "Casa"
+    },
+    {
+      "id": "income",
+      "en": "Income",
+      "it": "Entrate"
+    },
+    {
+      "id": "inheritance",
+      "en": "Inheritance",
+      "it": "Eredità"
+    },
+    {
+      "id": "language",
+      "en": "Language",
+      "it": "Lingue"
+    },
+    {
+      "id": "leisure",
+      "en": "Leisure",
+      "it": "Tempo libero"
+    },
+    {
+      "id": "miscellaneous",
+      "en": "Miscellaneous",
+      "it": "Varie"
+    },
+    {
+      "id": "personal_care",
+      "en": "Personal care",
+      "it": "Cura personale"
+    },
+    {
+      "id": "pharmacy",
+      "en": "Pharmacy",
+      "it": "Farmacia"
+    },
+    {
+      "id": "phone",
+      "en": "Phone",
+      "it": "Telefono"
+    },
+    {
+      "id": "refund",
+      "en": "Refund",
+      "it": "Rimborso acquisti"
+    },
+    {
+      "id": "reimbursement",
+      "en": "Reimbursement",
+      "it": "Rimborso spese"
+    },
+    {
+      "id": "rent",
+      "en": "Rent",
+      "it": "Affitto"
+    },
+    {
+      "id": "salary",
+      "en": "Salary",
+      "it": "Stipendio"
+    },
+    {
+      "id": "service",
+      "en": "Service",
+      "it": "Servizio"
+    },
+    {
+      "id": "shopping",
+      "en": "Shopping",
+      "it": "Acquisti"
+    },
+    {
+      "id": "sport",
+      "en": "Sport",
+      "it": "Sport"
+    },
+    {
+      "id": "stipend",
+      "en": "Stipend",
+      "it": "Borsa / indennità"
+    },
+    {
+      "id": "study",
+      "en": "Study",
+      "it": "Studio"
+    },
+    {
+      "id": "supplements",
+      "en": "Supplements",
+      "it": "Integratori"
+    },
+    {
+      "id": "tax_refund",
+      "en": "Tax refund",
+      "it": "Rimborso fiscale"
+    },
+    {
+      "id": "taxes",
+      "en": "Taxes",
+      "it": "Tasse"
+    },
+    {
+      "id": "transport",
+      "en": "Transport",
+      "it": "Trasporti"
+    },
+    {
+      "id": "travel",
+      "en": "Travel",
+      "it": "Viaggi"
+    },
+    {
+      "id": "university",
+      "en": "University",
+      "it": "Università"
+    },
+    {
+      "id": "utilities",
+      "en": "Utilities",
+      "it": "Utenze"
+    },
+    {
+      "id": "wellness",
+      "en": "Wellness",
+      "it": "Benessere"
+    },
+    {
+      "id": "work",
+      "en": "Work",
+      "it": "Lavoro"
+    },
+    {
+      "id": "work_payment",
+      "en": "Work payment",
+      "it": "Pagamento lavoro"
+    }
+  ],
+  "dad": [
+    {
+      "id": "dad_groceries",
+      "it": "spesa",
+      "en": "Groceries"
+    },
+    {
+      "id": "dad_diesel",
+      "it": "gasolio",
+      "en": "Diesel"
+    },
+    {
+      "id": "dad_phone",
+      "it": "telefono",
+      "en": "Phone"
+    },
+    {
+      "id": "dad_electricity",
+      "it": "luce",
+      "en": "Electricity"
+    },
+    {
+      "id": "dad_water",
+      "it": "acqua",
+      "en": "Water"
+    },
+    {
+      "id": "dad_gas",
+      "it": "gas",
+      "en": "Gas"
+    },
+    {
+      "id": "dad_clothes",
+      "it": "abbigliamento",
+      "en": "Clothing"
+    },
+    {
+      "id": "dad_car_maintenance_tax",
+      "it": "man. Auto bollo",
+      "en": "Car maintenance and vehicle tax"
+    },
+    {
+      "id": "dad_medical",
+      "it": "spese mediche",
+      "en": "Medical expenses"
+    },
+    {
+      "id": "dad_waste_tax",
+      "it": "tari (rifiuti)",
+      "en": "Waste tax (TARI)"
+    },
+    {
+      "id": "dad_property_tax",
+      "it": "tares (imu)",
+      "en": "Property tax (TARES / IMU)"
+    },
+    {
+      "id": "dad_insurance",
+      "it": "assicurazione",
+      "en": "Insurance"
+    },
+    {
+      "id": "dad_holidays_celebrations",
+      "it": "ferie - festa",
+      "en": "Holidays and celebrations"
+    },
+    {
+      "id": "dad_school",
+      "it": "scuola",
+      "en": "School"
+    },
+    {
+      "id": "dad_miscellaneous",
+      "it": "varie",
+      "en": "Miscellaneous"
+    },
+    {
+      "id": "dad_firewood",
+      "it": "legna",
+      "en": "Firewood"
+    },
+    {
+      "id": "dad_inps",
+      "it": "tasse INPS",
+      "en": "INPS contributions"
+    }
+  ]
+}

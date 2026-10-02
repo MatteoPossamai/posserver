@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+cargo fmt --check
+# The preserved contract file has a pre-existing style-only Clippy warning.
+cargo clippy --locked --bin posserver --test operational -- -D warnings
+cargo build --locked
+export POSSERVER_BIN="$PWD/target/debug/posserver"
+cargo test --locked --all-targets -- --test-threads=2
+node --check web/app.js
+python3 scripts/browser-tests
+python3 tests/deployment.py
