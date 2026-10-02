@@ -14,9 +14,18 @@ header {
   gap: 16px;
   flex-wrap: wrap;
 }
+header .brand-icon {
+  display: block;
+  width: 48px;
+  height: 32px;
+  flex: 0 0 auto;
+  object-fit: contain;
+  border-radius: 4px;
+}
 h1 {
   font-size: 1.5rem;
   margin-right: auto;
+  margin-left: -8px;
 }
 nav {
   display: flex;
@@ -118,4 +127,77 @@ a {
 aside {
   font-size: 0.9rem;
   color: #41556d;
+}
+.chart-shell {
+  position: relative;
+  width: 100%;
+  padding-top: 48px;
+}
+#chart svg[data-testid="trend-chart"] {
+  display: block;
+  height: auto;
+  min-height: 220px;
+  max-height: 350px;
+  overflow: visible;
+}
+.chart-grid {
+  stroke: #dce4ec;
+  stroke-width: 1;
+}
+.chart-axis {
+  stroke: #63788c;
+  stroke-width: 1.5;
+}
+.chart-y-label,
+.chart-x-label,
+.chart-axis-title {
+  fill: #41556d;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+}
+.chart-line {
+  fill: none;
+  stroke: #205b89;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+.chart-point {
+  cursor: pointer;
+  outline: none;
+}
+.chart-point circle {
+  fill: #fff;
+  stroke: #205b89;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  transition: fill 120ms ease, r 120ms ease;
+}
+.chart-point:hover circle,
+.chart-point:focus circle {
+  fill: #d5efff;
+  r: 8;
+}
+.chart-point:focus circle {
+  stroke: #ff2a6d;
+}
+.chart-tooltip {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  max-width: calc(100vw - 48px);
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid #bcc9d7;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 2px 8px #14283a1f;
+  color: #14283a;
+  font-weight: 600;
+  pointer-events: none;
+}
+.chart-tooltip[hidden] {
+  display: none;
 }

@@ -124,3 +124,37 @@ currencies and 70 mapped categories; amounts used one or two decimal digits. The
 original bytes for the batch record. Import committed 1,698 rows as source `legacy_csv`, revision 2.
 The temporary phone copy was mode 600 and removed after successful commit. Dashboard now opens on
 the latest transaction month and filters its category table to rows with positive spending.
+
+
+Matteo approved a current-rate approximation for the mixed-currency dashboard. Saved directed
+rate EUR→GBP `0.85373`, the ECB reference rate dated 2026-10-01. It applies uniformly to the
+historical EUR rows, so older converted totals are estimates rather than transaction-date rates.
+The September 2026 dashboard report now loads with nine categories that contain spending.
+
+
+## Matteo's UI recovery — 2026-10-02
+
+Reproduced the reported “service unavailable” page in a mobile browser. The dashboard asked
+for `/users/:id/latest`; the API route is `/users/:id/transactions/latest`, causing an HTTP 404
+and the generic UI error. Corrected the request and improved backup status to say “Backup not
+configured” when neither cloud provider is configured, rather than showing an endless pending
+state. Both Dropbox and Drive remain unconfigured.
+
+
+## Website icon — 2026-10-02
+
+Embedded `assets/cyberpunk_p_icon.svg` as the website's `/icon.svg`, registered it as the browser
+tab icon, and added the mark beside the header title. The deploy archive now includes the asset.
+
+
+## Monthly chart update — 2026-10-02
+
+Replaced monthly spending bars with a responsive line chart with labeled axes, currency ticks,
+month labels, keyboard-focusable points, and an exact per-month amount tooltip on hover/focus.
+
+
+## Current month and income categories — 2026-10-02
+
+Dashboard now defaults to the current month in Matteo's timezone so October updates as the month
+progresses. Category rows now appear when either expense or income totals are nonzero, preserving
+salary and other income-only categories in their monthly summaries.

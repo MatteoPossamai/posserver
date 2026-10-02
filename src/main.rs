@@ -381,6 +381,7 @@ fn route_label(path: &str) -> &'static str {
         [""] => "/",
         ["app.js"] => "/app.js",
         ["style.css"] => "/style.css",
+        ["icon.svg"] => "/icon.svg",
         _ => "unmatched",
     }
 }
@@ -455,6 +456,13 @@ async fn handle(app: App, req: Request, path: String, method: &'static str) -> R
                 return (
                     [("content-type", "text/css; charset=utf-8")],
                     include_str!("../web/style.css"),
+                )
+                    .into_response()
+            }
+            "/icon.svg" => {
+                return (
+                    [("content-type", "image/svg+xml; charset=utf-8")],
+                    include_str!("../assets/cyberpunk_p_icon.svg"),
                 )
                     .into_response()
             }

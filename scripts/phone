@@ -43,7 +43,7 @@ def main():
         release = uuid.uuid4().hex
         archive = io.BytesIO()
         with tarfile.open(fileobj=archive, mode='w:gz') as tar:
-            for name in ['Cargo.toml', 'Cargo.lock', 'src', 'web', 'docs/categories.json', 'config/example.json', 'scripts/run-termux']:
+            for name in ['Cargo.toml', 'Cargo.lock', 'src', 'web', 'assets/cyberpunk_p_icon.svg', 'docs/categories.json', 'config/example.json', 'scripts/run-termux']:
                 tar.add(ROOT / name, arcname=name)
         command = base + '''command -v cargo >/dev/null
 command -v clang >/dev/null

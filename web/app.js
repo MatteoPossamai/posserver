@@ -538,10 +538,7 @@ function deleteForm(t) {
   };
 }
 async function dashboard() {
-  const latest = (await api(`${base()}/latest`)).transaction;
-  const month = latest
-    ? dateInZone(new Date(latest.occurred_at)).slice(0, 7)
-    : dateInZone().slice(0, 7);
+  const month = dateInZone().slice(0, 7);
   main.innerHTML = `<h2>${w("dashboard")}</h2>${label("month", input("report-month", "month", month))}${label("currency", select("report-currency", currencies, selected.reporting_currency))}${test("report-error", "p", "", 'class="error" role="alert" hidden')}<div id="report"></div>${label("category", select("trend-category", [["", w("all")], ...categoryOptions()], ""))}<div id="chart"></div>`;
   let reportSequence = 0;
   const update = async () => {
@@ -566,10 +563,70 @@ async function dashboard() {
       if (n !== reportSequence || g !== generation) return;
       $('[data-testid="report-error"]').hidden = true;
       $("#report").innerHTML =
-        `<div class="totals"><article><h3>${w("spent")}</h3>${test("current-expense", "strong", esc(money(r.current.expense_minor, currency)), `data-minor="${r.current.expense_minor}"`)}</article><article><h3>${w("income")}</h3>${esc(money(r.current.income_minor, currency))}</article><article><h3>${w("net")}</h3>${esc(money(r.current.net_minor, currency))}</article><article><h3>${w("previous")} ${esc(r.previous.month)}</h3>${test("previous-expense", "strong", esc(money(r.previous.expense_minor, currency)), `data-minor="${r.previous.expense_minor}"`)}</article></div><table><thead><tr><th>${w("category")}</th><th>${w("spent")}</th><th>${w("income")}</th></tr></thead><tbody>${r.categories.filter((c) => BigInt(c.expense_minor) > 0n).map((c) => `<tr><td>${esc(categories.find((cat) => cat.id === c.category_id)[selected.language])}</td><td data-testid="category-total-${c.category_id}" data-minor="${c.expense_minor}">${esc(money(c.expense_minor, currency))}</td><td>${esc(money(c.income_minor, currency))}</td></tr>`).join("")}</tbody></table>`;
-      const max = Math.max(1, ...trend.points.map((p) => p.expense_minor));
+        `<div class="totals"><article><h3>${w("spent")}</h3>${test("current-expense", "strong", esc(money(r.current.expense_minor, currency)), `data-minor="${r.current.expense_minor}"`)}</article><article><h3>${w("income")}</h3>${esc(money(r.current.income_minor, currency))}</article><article><h3>${w("net")}</h3>${esc(money(r.current.net_minor, currency))}</article><article><h3>${w("previous")} ${esc(r.previous.month)}</h3>${test("previous-expense", "strong", esc(money(r.previous.expense_minor, currency)), `data-minor="${r.previous.expense_minor}"`)}</article></div><table><thead><tr><th>${w("category")}</th><th>${w("spent")}</th><th>${w("income")}</th></tr></thead><tbody>${r.categories.filter(
+          (c) =>
+            BigInt(c.expense_minor) > 0n || BigInt(c.income_minor) > 0n,
+        ).map((c) => `<tr><td>${esc(categories.find((cat) => cat.id === c.category_id)[selected.language])}</td><td data-testid="category-total-${c.category_id}" data-minor="${c.expense_minor}">${esc(money(c.expense_minor, currency))}</td><td>${esc(money(c.income_minor, currency))}</td></tr>`).join("")}</tbody></table>`;
+      const chartWidth = 720,
+        chartHeight = 350,
+        left = 92,
+        right = 20,
+        top = 20,
+        bottom = 62,
+        plotWidth = chartWidth - left - right,
+        plotHeight = chartHeight - top - bottom,
+        maxMinor = Math.max(
+          1,
+          ...trend.points.map((p) => Number(p.expense_minor)),
+        ),
+        points = trend.points.map((p, i) => ({
+          ...p,
+          x:
+            left +
+            (trend.points.length < 2
+              ? plotWidth / 2
+              : (i * plotWidth) / (trend.points.length - 1)),
+          y: top + plotHeight - (Number(p.expense_minor) / maxMinor) * plotHeight,
+        })),
+        grid = Array.from({ length: 5 }, (_, i) => {
+          const fraction = i / 4,
+            y = top + fraction * plotHeight,
+            value = BigInt(Math.round((maxMinor * (4 - i)) / 4)),
+            label = new Intl.NumberFormat(selected.language, {
+              style: "currency",
+              currency,
+              maximumFractionDigits: 0,
+            }).format(value);
+          return `<g class="chart-tick"><line class="chart-grid" x1="${left}" y1="${y}" x2="${chartWidth - right}" y2="${y}" /><text class="chart-y-label" x="${left - 12}" y="${y}" text-anchor="end" dominant-baseline="middle">${esc(label)}</text></g>`;
+        }).join(""),
+        line = points.map((p) => `${p.x},${p.y}`).join(" "),
+        markers = points
+          .map((p) => {
+            const month = new Intl.DateTimeFormat(selected.language, {
+                timeZone: selected.timezone,
+                month: "short",
+              }).format(new Date(`${p.month}-01T12:00:00Z`)),
+              amount = money(p.expense_minor, currency),
+              tip = `${month} ${p.month.slice(0, 4)}: ${amount} · ${w("spent")}`;
+            return `<g class="chart-point" data-testid="trend-point-${p.month}" data-minor="${p.expense_minor}" data-chart-tip="${esc(tip)}" tabindex="0" role="img" aria-label="${esc(tip)}"><circle cx="${p.x}" cy="${p.y}" r="6"><title>${esc(tip)}</title></circle><text class="chart-x-label" x="${p.x}" y="${top + plotHeight + 28}" text-anchor="middle">${esc(month)}</text></g>`;
+          })
+          .join("");
       $("#chart").innerHTML =
-        `<h3>${w("trend")}</h3><svg data-testid="trend-chart" viewBox="0 0 600 200" role="img" aria-label="${esc(w("trend"))}">${trend.points.map((p, i) => `<rect data-testid="trend-point-${p.month}" data-minor="${p.expense_minor}" x="${i * 50 + 4}" y="${170 - (p.expense_minor / max) * 150}" width="36" height="${Math.max(1, (p.expense_minor / max) * 150)}" fill="#205b89"><title>${p.month}: ${esc(money(p.expense_minor, currency))}</title></rect><text x="${i * 50 + 4}" y="195" font-size="10">${p.month.slice(5)}</text>`).join("")}</svg>`;
+        `<h3>${w("trend")}</h3><div class="chart-shell"><svg data-testid="trend-chart" viewBox="0 0 ${chartWidth} ${chartHeight}" role="img" aria-label="${esc(w("trend"))}" preserveAspectRatio="xMidYMid meet">${grid}<line class="chart-axis" x1="${left}" y1="${top}" x2="${left}" y2="${top + plotHeight}"/><line class="chart-axis" x1="${left}" y1="${top + plotHeight}" x2="${chartWidth - right}" y2="${top + plotHeight}"/><text class="chart-axis-title" transform="translate(20 ${top + plotHeight / 2}) rotate(-90)" text-anchor="middle">${esc(w("spent"))}</text><polyline class="chart-line" points="${line}"/>${markers}</svg><output class="chart-tooltip" data-testid="chart-tooltip" hidden></output></div>`;
+      const tooltip = $('[data-testid="chart-tooltip"]');
+      for (const point of $("#chart").querySelectorAll("[data-chart-tip]")) {
+        const show = () => {
+          tooltip.textContent = point.dataset.chartTip;
+          tooltip.hidden = false;
+        };
+        const hide = () => {
+          tooltip.hidden = true;
+        };
+        point.addEventListener("pointerenter", show);
+        point.addEventListener("pointerleave", hide);
+        point.addEventListener("focus", show);
+        point.addEventListener("blur", hide);
+      }
     } catch (e) {
       if (n === reportSequence && g === generation) {
         $("#report").innerHTML = "";
@@ -680,10 +737,11 @@ async function backupStatus() {
         "backup-status",
         "span",
         esc(
-          s.pending
-            ? w("pending")
-            : s.dropbox_revision === null && s.drive_revision === null
-              ? w("notConfigured")
+          !((s.dropbox_configured ?? s.dropbox_revision !== null) ||
+            (s.drive_configured ?? s.drive_revision !== null))
+            ? w("notConfigured")
+            : s.pending
+              ? w("pending")
               : w("backed"),
         ),
         `data-pending="${s.pending}"`,

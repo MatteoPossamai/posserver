@@ -45,7 +45,7 @@ pub fn status(c: &Connection, config: &Config) -> Result<Value> {
     let drive = db::op(c, "drive_revision")?.and_then(|s| s.parse::<i64>().ok());
     let err = db::op(c, "last_error")?.and_then(|s| serde_json::from_str::<Value>(&s).ok());
     Ok(
-        json!({"current_revision":db::revision(c)?,"local_revision":db::op(c,"snapshot_revision")?.and_then(|s|s.parse::<i64>().ok()),"dropbox_revision":if config.backup.dropbox.is_some(){dropbox}else{None},"drive_revision":if config.backup.drive.is_some(){drive}else{None},"pending":c.query_row("SELECT COUNT(*) FROM backup_outbox WHERE state='pending'",[],|r|r.get::<_,i64>(0))?,"last_error":err,"drive_last_success_at":db::op(c,"drive_success_at")?.and_then(|s|s.parse::<i64>().ok()).and_then(|t|chrono::DateTime::from_timestamp(t,0)).map(|d|d.to_rfc3339_opts(chrono::SecondsFormat::Secs,true))}),
+        json!({"current_revision":db::revision(c)?,"local_revision":db::op(c,"snapshot_revision")?.and_then(|s|s.parse::<i64>().ok()),"dropbox_revision":if config.backup.dropbox.is_some(){dropbox}else{None},"drive_revision":if config.backup.drive.is_some(){drive}else{None},"dropbox_configured":config.backup.dropbox.is_some(),"drive_configured":config.backup.drive.is_some(),"pending":c.query_row("SELECT COUNT(*) FROM backup_outbox WHERE state='pending'",[],|r|r.get::<_,i64>(0))?,"last_error":err,"drive_last_success_at":db::op(c,"drive_success_at")?.and_then(|s|s.parse::<i64>().ok()).and_then(|t|chrono::DateTime::from_timestamp(t,0)).map(|d|d.to_rfc3339_opts(chrono::SecondsFormat::Secs,true))}),
     )
 }
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
