@@ -16,7 +16,8 @@ posserver serve --db PATH/database.sqlite --config PATH/config.json --bind 127.0
 ```
 
 The default listener is `0.0.0.0:8080`; use an explicit bind for local tests. This v1 intentionally
-has user selection without authentication. Use the agreed private Tailscale access for phone setup.
+has user selection without authentication. The phone deployment is reachable on private Tailscale
+and through its public HTTPS Funnel route; anyone who can reach that URL can view and change data.
 Created DB/snapshots/config files use mode 600 and new data directories use mode 700.
 Do not share a backup directory between different databases.
 
@@ -106,36 +107,19 @@ disabled. With providers absent, automatic mode still produces local verified sn
 `automatic:false` disables startup/timed/write-triggered backup work; it still records every outbox
 entry. Do not call retry in deterministic tests unless provider responses have been scripted.
 
-## Drive and the existing phone scheduler
+## Google Drive (paused)
 
-Configure rclone outside Git, then add to runtime config:
+Google Drive is paused by the operator. Do not create an rclone remote, add Drive credentials,
+or schedule `backup-drive`. The implementation remains in the code, but it is not part of the
+current setup. Dropbox is the planned backup provider.
 
-```json
-{"remote":"gdrive:posserver","interval_seconds":3600,"timeout_seconds":30}
-```
-
-This object goes under `backup.drive`. Register **one** job in the existing phome interval scheduler:
-
-```sh
-posserver backup-drive --db PATH/database.sqlite --config PATH/config.json
-```
-
-Run it every 3,600 seconds. Read phome's current handover before installing or changing jobs.
-The server catches up once at startup in automatic mode; subsequent hourly work belongs to the
-existing scheduler. The command persists its last success, skips calls within the interval,
-and uses the same cross-process backup lock. `--force` deliberately bypasses the interval.
-`POSSERVER_RCLONE_BIN` overrides the executable for testing.
-
-Drive stores only `REMOTE/database.sqlite` and `REMOTE/manifest.json`, overwritten with `copyto`.
-Each subprocess has a bounded timeout (default 30 seconds, clamped to 1–300), one transfer/checker
-and bounded rclone retries. Timeout/shutdown kills its process group. Success requires both files;
-a partial upload retains the previous confirmed revision. Two-file publication is not atomic:
-downloaded bytes must always be checked against the manifest.
+The Drive provider remains dormant in the binary/config schema, but its setup instructions are
+intentionally omitted while it is paused.
 
 ## Restore
 
 Stop the service. Download the manifest and the immutable DB named by its `snapshot_path` from
-Dropbox, or the fixed DB/manifest pair from Drive. Restore checks exact SHA-256, schema version,
+Dropbox. Restore checks exact SHA-256, schema version,
 SQLite integrity and DB/manifest revision agreement before modifying the destination:
 
 ```sh
@@ -154,11 +138,13 @@ Operational state refreshes every 15 seconds and after relevant operations. Scra
 operations or provider requests. CPU/RSS are sampled from the native process; unsupported platforms
 omit those metrics rather than fabricate zero values. Start time is always exported.
 
-Merge the job from `config/prometheus.yml` into the **existing** Prometheus configuration only after
-verifying listener reachability from Debian PRoot. Import/provision `config/grafana-dashboard.json`
-using the existing Prometheus datasource. Set the actual app port/address; loopback is a proposal.
-Reuse phome's reload mechanism. These files are prepared artifacts, not installed configuration.
-See [monitoring.md](monitoring.md) for metric semantics and diagnostic thresholds.
+The posserver scrape job is installed in phome's existing Prometheus configuration, targeting
+private Tailscale `100.108.243.40:8080` every 15 seconds. The provisioned Grafana dashboard is
+installed at `/d/posserver` and uses the existing Prometheus datasource. Prometheus also alerts
+through the existing Telegram Alertmanager on target-down, app-not-ready, Dropbox backup failure,
+and a configured Dropbox queue stuck for 15 minutes. The backup alert is silent until Dropbox is
+configured. No second monitoring service was created. See [monitoring.md](monitoring.md) for
+metric semantics and diagnostic thresholds.
 
 ## SSH deployment and supervision
 
@@ -186,7 +172,8 @@ process. Stop persists across supervisor restarts. Build failure leaves the old 
 activation checks readiness and restarts the previous release if available on failure. Rollback selects the previous
 binary without restoring the database. Release sources and build cache remain for incremental
 builds; prune unused releases manually. Logs append to private `data/posserver/server.log`;
-rotation is not yet configured. Never expose this unauthenticated service through public Funnel.
+rotation is not yet configured. The current phone's Funnel publishes port 443 to the app; this is
+an explicit personal deployment exception. It provides no authentication and is open to the internet.
 
 ### Optional encrypted configuration
 
@@ -206,11 +193,11 @@ through SSH stdin to an atomic mode-600 phone config file. It does not print cre
 credentials. Monzo access tokens remain request-only and must not be added to this file.
 Ansible Vault is an optional laptop dependency; no Ansible installation is needed on Android.
 
-Merge `config/scheduler-job.json` as one entry in phome's existing `jobs` array only when Drive
-is configured; preserve existing jobs. Monitoring/dashboard/scheduler installation is separate
-from app deployment. Do not install another scheduler or monitoring stack.
+Do not configure or schedule Google Drive while it is paused. Monitoring and dashboard are
+installed in phome's existing stack; do not install another scheduler or monitoring stack.
 
 The UI is a responsive website, served by this binary. There is currently no APK, Android
-wrapper, web app manifest or offline service worker. Use a mobile browser on private Tailscale.
+wrapper, web app manifest or offline service worker. Use a mobile browser at the public Funnel URL
+or on private Tailscale.
 Phone build/deployment verification is recorded separately in `implementation.md`; supervisor
 restart does not demonstrate survival of Android vendor kills, reboot or overnight operation.

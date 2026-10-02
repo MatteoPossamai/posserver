@@ -24,8 +24,8 @@ authorization or Google Drive upload has been performed.
   reports/charts, directed FX settings, conflict handling, one-use token clearing and backup state.
   Response generation checks prevent old requests from changing a newly selected user's view.
 - Cached Prometheus endpoint, HTTP/DB/import/job metrics, readiness/stale-state handling and
-  native cached process CPU/RSS. Prepared Grafana dashboard, scrape job, Termux run script and
-  existing-scheduler job template. Configuration/setup steps are in operations.md.
+  native cached process CPU/RSS. The scrape job and Grafana dashboard are installed in the
+  existing phome monitoring stack. Operator setup steps are in USER.md.
 
 ## Automated verification
 
@@ -82,18 +82,19 @@ The app is installed under `$PREFIX/apps/posserver`, supervised as `posserver`, 
 on private Tailscale `100.108.243.40:8080`. Verified repeat deployment, stop with listener removal,
 start, restart, rollback and reverse rollback; UI/JS/CSS, health, metrics, users and backup status
 all returned HTTP 200 afterward. Native CPU/RSS metrics are present; one empty-database idle
-RSS sample was 10,809,344 bytes (10.3 MiB), not an import/load measurement. The fresh database has no
-users; no bank request or cloud upload was made. Data directory is mode 700, config/database 600.
-Existing phome-monitoring and sshd supervisor PIDs stayed unchanged. Monitoring integration,
-Drive scheduling and provider credentials were not installed. No reboot or overnight test ran.
+RSS sample was 10,809,344 bytes (10.3 MiB), not an import/load measurement. The database was
+empty at initial deployment; Matteo's CSV was imported afterward (see below). No bank request or
+cloud upload was made. Data directory is mode 700, config/database 600. Existing phome-monitoring
+and sshd supervisor PIDs stayed unchanged. No Drive schedule or provider credentials were
+installed. No reboot or overnight test ran.
 The optional Vault workflow has local synthetic pipeline coverage, not a live operator secret test.
 
 ## Remaining release gates and limits
 
-- Measured import memory/load, real PRoot-to-Termux scrape and installed Grafana dashboard.
+- Measured import memory/load and long-running phone reliability.
   Native ARM64 build and basic app lifecycle are verified; the laptop binary remains x86_64.
-- Fresh operator account ID/binding, CSV path/format, initial import start, Dropbox app/OAuth and
-  rclone remote. Never retrieve old credentials from conversation history.
+- Dropbox app/OAuth, first live upload and restore drill. Google Drive is paused. Never retrieve
+  old credentials from conversation history.
 - Live Monzo chronology, object-ID pagination including timestamp ties, provider history window
   and deliberate wider replay. Mocks establish the implemented contract, not the bank's behavior.
 - Disposable live Dropbox/Drive upload/download/hash/integrity/restore, app-folder permissions
@@ -111,7 +112,7 @@ The test fault inputs are process-local opt-in environment variables, never HTTP
 `POSSERVER_TEST_DB_MAX_PAGES` and `POSSERVER_TEST_SNAPSHOT_MAX_PAGES` set real SQLite capacity
 limits. Leave them unset in normal operation. File/provider/process fixtures use only synthetic data.
 
-Scheduler, dashboard and remote account configuration remain separate setup steps.
+Remote account configuration remains a setup step. Google Drive is paused; no CSV sync is planned.
 Repository changes are left reviewable without creating a commit.
 
 
@@ -158,3 +159,13 @@ month labels, keyboard-focusable points, and an exact per-month amount tooltip o
 Dashboard now defaults to the current month in Matteo's timezone so October updates as the month
 progresses. Category rows now appear when either expense or income totals are nonzero, preserving
 salary and other income-only categories in their monthly summaries.
+
+
+## Public Funnel access — 2026-10-02
+
+At Matteo's request, the existing Tailscale Funnel node now publishes the app on
+`https://phome-public.tail1b8023.ts.net/` (HTTPS port 443 → private Tailscale
+`100.108.243.40:8080`). The existing Grafana Funnel remains on port 8443. Verified the public
+health endpoint and app page, plus the Grafana API for the posserver dashboard (16 panels). This
+v1 has no authentication, so the public URL permits anyone to view and change data. Funnel
+availability still depends on the phone and Termux remaining online.

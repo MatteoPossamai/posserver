@@ -2,7 +2,7 @@
 
 Rust family finance service with a mobile English/Italian web interface, SQLite storage,
 exact currency conversion, a versioned API, one-use Monzo imports, CSV migration, durable
-Dropbox backups, scheduled rclone Drive backups and Prometheus metrics.
+Dropbox backups and Prometheus metrics. Google Drive support remains paused.
 
 ```sh
 cargo build --locked
@@ -16,7 +16,7 @@ Open `http://127.0.0.1:8080` and create a user. No bank or backup credentials ar
 for manual entries and reports. Desktop requires `--db` or `POSSERVER_DATA_DIR`; Termux
 also defaults to `$PREFIX/data/posserver/database.sqlite`. The UI is embedded in the binary.
 
-Read [setup and operation](docs/operations.md), [API/CLI contracts](docs/api.md),
+Read [Matteo's operator setup](USER.md), [setup and operation](docs/operations.md), [API/CLI contracts](docs/api.md),
 [design](docs/design.md), [categories](docs/categories.json), [monitoring](docs/monitoring.md),
 and [implementation status](docs/implementation.md).
 
