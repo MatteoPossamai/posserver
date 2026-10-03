@@ -1,7 +1,7 @@
 mod support;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::{fs, process::Command};
+use std::fs;
 use support::*;
 
 fn catalogue() -> Value {
@@ -541,30 +541,119 @@ fn monzo_excluded_only_page_advances_and_terminates() {
     assert!(a.monzo.requests()[1].path.contains("since=tx_pot"));
 }
 #[test]
-fn monzo_start_ignores_all_manual_and_other_user_history() {
-    let a = App::new();
+fn first_monzo_import_discovers_account_and_starts_from_matteos_latest_transaction() {
+    let mut a = App::new();
+    a.stop();
+    let mut config: Value = serde_json::from_slice(&fs::read(&a.config).unwrap()).unwrap();
+    config["monzo"]["links_by_user_name"] = json!({});
+    fs::write(&a.config, serde_json::to_vec(&config).unwrap()).unwrap();
+    a.start();
     let u = a.user("Matteo", "personal", "UTC");
-    let d = a.user("Papà", "dad", "UTC");
-    a.create(id(&u), "2035-01-01T00:00:00Z", -1, "groceries", "GBP");
-    a.create(id(&d), "2040-01-01T00:00:00Z", -2, "dad_groceries", "EUR");
-    error(&a.import(id(&u), None, 422), "import_start_required");
+    let other = a.user("Papà", "dad", "UTC");
+    a.api("POST", &format!("/users/{}/transactions", id(&u)), Some(json!({"occurred_at":"2035-01-01T00:00:00Z","category_id":"groceries","issuer":"SYNTHETIC_SHOP","amount_minor":-1,"currency":"GBP"})), 201);
+    a.create(
+        id(&other),
+        "2040-01-01T00:00:00Z",
+        -2,
+        "dad_groceries",
+        "EUR",
+    );
+    a.monzo.reply(
+        200,
+        json!({"accounts":[
+            {"id":"pot_not_an_account","description":"Savings pot"},
+            {"id":"acc_matteo","description":"Current account"}
+        ]}),
+    );
+    a.monzo.page(vec![tx(
+        "tx_a",
+        "2035-01-01T00:00:00Z",
+        -1,
+        "Synthetic shop",
+    )]);
+    a.monzo.page(vec![]);
+    let result = a.import(id(&u), None, 200);
+    assert_eq!(result["inserted"], 1);
+    assert_eq!(a.rows(id(&u)).len(), 2);
+    assert_eq!(a.rows(id(&other)).len(), 1);
+    let requests = a.monzo.requests();
+    assert_eq!(requests[0].path, "/accounts");
+    assert_eq!(
+        requests[0].header("authorization"),
+        Some("Bearer synthetic-monzo-token")
+    );
+    assert!(requests[1].path.contains("since=2034-12-31T23%3A59%3A59Z"));
+    assert!(requests[1].path.contains("account_id=acc_matteo"));
+}
+
+#[test]
+fn first_monzo_import_requires_account_choice_when_token_has_multiple_accounts() {
+    let mut a = App::new();
+    a.stop();
+    let mut config: Value = serde_json::from_slice(&fs::read(&a.config).unwrap()).unwrap();
+    config["monzo"]["links_by_user_name"] = json!({});
+    fs::write(&a.config, serde_json::to_vec(&config).unwrap()).unwrap();
+    a.start();
+    let u = a.user("Matteo", "personal", "UTC");
+    a.create(id(&u), "2026-01-01T00:00:00Z", -1, "groceries", "GBP");
+    let accounts = json!({"accounts":[
+        {"id":"acc_one","description":"Main"},
+        {"id":"acc_two","description":"Joint"}
+    ]});
+    a.monzo.reply(200, accounts.clone());
+    let first = a.api(
+        "POST",
+        &format!("/users/{}/imports/monzo", id(&u)),
+        Some(json!({"access_token":"synthetic-monzo-token"})),
+        409,
+    );
+    error(&first, "monzo_account_selection_required");
+    assert_eq!(first["error"]["details"]["accounts"][1]["id"], "acc_two");
+    assert_eq!(a.monzo.requests().len(), 1);
+    a.monzo.reply(200, accounts);
+    a.monzo.page(vec![]);
+    let second = a.api(
+        "POST",
+        &format!("/users/{}/imports/monzo", id(&u)),
+        Some(json!({"access_token":"synthetic-monzo-token","account_id":"acc_two"})),
+        200,
+    );
+    assert_eq!(second["inserted"], 0);
+    assert!(a.monzo.requests()[2].path.contains("account_id=acc_two"));
+}
+
+#[test]
+fn first_monzo_import_failure_does_not_save_account_binding_or_partial_rows() {
+    let mut a = App::new();
+    a.stop();
+    let mut config: Value = serde_json::from_slice(&fs::read(&a.config).unwrap()).unwrap();
+    config["monzo"]["links_by_user_name"] = json!({});
+    fs::write(&a.config, serde_json::to_vec(&config).unwrap()).unwrap();
+    a.start();
+    let u = a.user("Matteo", "personal", "UTC");
+    a.create(id(&u), "2026-01-01T00:00:00Z", -1, "groceries", "GBP");
+    a.monzo.reply(
+        200,
+        json!({"accounts":[{"id":"acc_matteo","description":"Current account"}]}),
+    );
+    a.monzo
+        .page(vec![tx("tx_a", "2026-01-02T00:00:00Z", -2, "shop")]);
+    a.monzo.raw(200, b"{not-json".to_vec());
+    error(&a.import(id(&u), None, 502), "monzo_invalid_response");
+    let current = a.api("GET", &format!("/users/{}", id(&u)), None, 200);
+    assert_eq!(current["user"]["monzo_linked"], false);
+    assert_eq!(a.rows(id(&u)).len(), 1);
+}
+
+#[test]
+fn monzo_is_rejected_for_every_user_except_matteo() {
+    let a = App::new();
+    let other = a.user("Other", "personal", "UTC");
     error(
-        &a.import(id(&d), Some("2026-01-01T00:00:00Z"), 409),
-        "monzo_not_linked",
+        &a.import(id(&other), Some("2026-01-01T00:00:00Z"), 403),
+        "monzo_not_available_for_user",
     );
     assert!(a.monzo.requests().is_empty());
-    a.monzo
-        .page(vec![tx("tx_a", "2026-01-01T00:00:00Z", -4, "shop")]);
-    a.monzo.page(vec![]);
-    a.import(id(&u), Some("2025-12-31T00:00:00Z"), 200);
-    assert_eq!(a.rows(id(&d)).len(), 1);
-    assert_eq!(a.rows(id(&u)).len(), 2);
-    a.monzo.page(vec![]);
-    a.import(id(&u), None, 200);
-    let last = a.monzo.requests().last().unwrap().path.clone();
-    assert!(last.contains("2025-12-31"));
-    assert!(!last.contains("2035"));
-    assert!(!last.contains("2040"));
 }
 #[test]
 fn monzo_provider_failures_never_refresh_or_advance_cursor() {

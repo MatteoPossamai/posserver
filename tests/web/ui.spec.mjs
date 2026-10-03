@@ -143,8 +143,7 @@ test('Italian validation is visible and keyboard accessible', async ({ page, req
 
 for (const success of [true, false]) {
   test(`Monzo token clears after ${success ? 'success' : 'failure'} and stays out of browser storage`, async ({ page, request }) => {
-    // Run this pair against a configuration linking the unique per-test names below to synthetic accounts.
-    const name = success ? 'WebMonzoSuccess' : 'WebMonzoFailure';
+    const name = 'Matteo';
     const u = await user(request, 'personal', name);
     const token = 'synthetic-browser-monzo-token';
     await page.route(`**/api/v1/users/${u.id}/imports/monzo`, async route => {
@@ -164,6 +163,46 @@ for (const success of [true, false]) {
     expect(stored).not.toContain(token);
   });
 }
+
+test('Monzo is shown only to Matteo and supports account choice', async ({ page, request }) => {
+  const other = await user(request, 'personal', 'Other');
+  await select(page, other);
+  await expect(page.getByTestId('monzo-nav')).toHaveCount(0);
+
+  const matteo = await user(request, 'personal', 'Matteo');
+  const token = 'synthetic-account-choice-token';
+  let calls = 0;
+  await page.route(`**/api/v1/users/${matteo.id}/imports/monzo`, async route => {
+    const body = route.request().postDataJSON();
+    expect(body.access_token).toBe(token);
+    calls++;
+    if (calls === 1) {
+      expect(body.account_id).toBeUndefined();
+      await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: {
+        code: 'monzo_account_selection_required', message: 'Choose an account', details: { accounts: [
+          { id: 'acc_current', description: 'Current <img src=x>' }, { id: 'acc_joint', description: 'Joint' },
+        ] },
+      } }) });
+    } else {
+      expect(body.account_id).toBe('acc_joint');
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        inserted: 0, duplicates: 0, excluded: 0, reconciled: 0, unknown_categories: 0, last_raw_id: null, revision: 1,
+      }) });
+    }
+  });
+  await select(page, matteo);
+  await expect(page.getByTestId('monzo-nav')).toBeVisible();
+  await page.getByTestId('monzo-nav').click();
+  await page.getByTestId('monzo-token').fill(token);
+  await page.getByTestId('monzo-import').click();
+  await expect(page.getByTestId('monzo-account-select')).toBeVisible();
+  await expect(page.getByTestId('monzo-account-choice').locator('img')).toHaveCount(0);
+  await page.getByTestId('monzo-account-select').selectOption('acc_joint');
+  await page.getByTestId('monzo-import').click();
+  await expect(page.getByTestId('monzo-result')).toBeVisible();
+  await expect(page.getByTestId('monzo-token')).toHaveValue('');
+  expect(calls).toBe(2);
+});
 
 test('backup indicator distinguishes pending and recovered revisions', async ({ page, request }) => {
   const u = await user(request); let pending = true;

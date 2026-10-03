@@ -20,7 +20,7 @@ See [the monitoring contract](monitoring.md) for required metrics and collection
 | GET `/users/:u/categories` | none | 200 `{categories:[{id,en,it}]}` sorted id |
 
 User: `{id,name,language,timezone,reporting_currency,category_profile,version,rates,monzo_linked}`.
-monzo_linked is boolean; the UI uses it to show the import card only for linked users.
+monzo_linked is boolean; the link is stored after the first successful import.
 rates is array `{from:"EUR",to:"GBP",rate:"0.87"}`; PATCH replaces all rates if present.
 Initial version 1. Each effective PATCH increments version. Invalid rates/timezones/language
 return 422; stale version 409 `version_conflict`. Identity pairs need not be stored;
@@ -77,18 +77,33 @@ Zero-fill missing months. Unknown currency/bad month/inverted ranges 422. Missin
 
 ## Monzo
 
-POST `/users/:u/imports/monzo`, body `{access_token, since?:RFC3339}` -> 200
+POST `/users/:u/imports/monzo`, body `{access_token, since?:RFC3339, account_id?:string}` -> 200
 `{inserted,duplicates,excluded,reconciled,unknown_categories,last_raw_id:null|string,revision}`.
-If since omitted use cursor/seed scoped to selected link; absent both -> 422 `import_start_required`.
-Configured link absent -> 409 `monzo_not_linked`; concurrent import -> 409 `import_in_progress`.
+Only the personal user named `Matteo` may use this endpoint; other users receive 403
+`monzo_not_available_for_user`. On the first request, the server lists accounts using the
+submitted token. Only IDs beginning `acc_` are eligible. One eligible account is selected
+automatically; with multiple eligible accounts it returns 409
+`monzo_account_selection_required` and `{accounts:[{id,description}]}`. The browser then asks the
+user to choose and repeats the request with `account_id`; the server checks that ID against the
+token's account list. A binding is saved only with a successful import.
+
+If `since` is omitted, use the saved Monzo cursor/seed; on first import use one second before
+Matteo's latest non-deleted transaction in the database. If no such transaction exists, return
+422 `import_start_required`. An explicit `since` requests a wider replay. Pagination uses Monzo
+transaction IDs after the first timestamp page, requests at most 100 rows, and terminates on an
+empty page. Pages are validated before any database commit. Concurrent import -> 409
+`import_in_progress`.
 Token empty -> 422. 401/403 upstream -> 422 `monzo_token_rejected`; 429 -> 503
 `monzo_rate_limited`; timeout/5xx -> 502 `monzo_unavailable`; malformed JSON/object -> 502
 `monzo_invalid_response`; cursor stall -> 502 `monzo_pagination_stalled`; legacy collision -> 409
 `legacy_match_ambiguous`. Provider error messages/bodies are not forwarded.
 
-No endpoint returns token. Configuring link is operator config/CLI, not arbitrary account choice
-in UI. Test config format below fixes synthetic account/user mapping by exact user name; production
-setup should assign immutable user IDs once creation is complete. Do not auto-bind all new users.
+The access token is used only for these requests; it is never stored or returned. If account
+choice is required, the browser keeps it in the form only for the selection retry, then clears it
+when the import completes or fails. Test config below supports synthetic account/user mappings;
+production no longer needs a preconfigured Monzo account link. A different account after binding
+returns 409 `monzo_account_conflict`; an invalid choice or empty account list returns 409
+`monzo_account_invalid` or `monzo_account_not_found`.
 
 ## Backup status
 

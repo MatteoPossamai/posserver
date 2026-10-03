@@ -1,7 +1,6 @@
 //! Additional black-box fault, monitoring and concurrency checks using synthetic providers.
 #![allow(dead_code)]
 mod support;
-use fs2::FileExt;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
@@ -111,7 +110,8 @@ fn metrics_baseline_types_and_scrapes_are_read_only_and_bounded() {
     }
     assert_eq!(sample(&text, "posserver_ready", &[]), 1.);
     assert_eq!(sample(&text, "posserver_current_revision", &[]), 0.);
-    for p in ["dropbox"] {
+    {
+        let p = "dropbox";
         assert_eq!(
             sample(&text, "posserver_backup_configured", &[("provider", p)]),
             1.
@@ -295,7 +295,8 @@ fn unconfigured_backup_is_distinct_from_confirmed_success() {
     a.start();
     assert!(a.status()["dropbox_revision"].is_null());
     let m = metrics(&a);
-    for p in ["dropbox"] {
+    {
+        let p = "dropbox";
         assert_eq!(
             sample(&m, "posserver_backup_configured", &[("provider", p)]),
             0.
@@ -1156,7 +1157,7 @@ fn explicit_retry_wakes_worker_with_automatic_disabled() {
     let mut a = App::new();
     a.user("Matteo", "personal", "UTC");
     a.stop();
-    let mut c = config(&a);
+    let c = config(&a);
     write_config(&a, &c);
     a.start();
     assert_eq!(a.status()["pending"], 1);
@@ -1169,10 +1170,10 @@ fn explicit_retry_wakes_worker_with_automatic_disabled() {
     assert_eq!(a.status()["current_revision"], 1);
 }
 #[test]
-fn dropbox_retains_two_revisions_and_retries_failed_retention() {
+fn dropbox_retains_five_revisions_and_retries_failed_retention() {
     let a = App::new();
     let u = a.user("Matteo", "personal", "UTC");
-    for revision in 1..=3 {
+    for revision in 1..=6 {
         if revision > 1 {
             a.create(
                 id(&u),
@@ -1184,7 +1185,7 @@ fn dropbox_retains_two_revisions_and_retries_failed_retention() {
         }
         a.dropbox.reply(200, json!({}));
         a.dropbox.reply(200, json!({}));
-        if revision == 3 {
+        if revision == 6 {
             a.dropbox.reply(400, json!({}));
         }
         output_json(&a.backup("dropbox"));

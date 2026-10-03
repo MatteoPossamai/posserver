@@ -21,7 +21,7 @@ const words = {
     transactions: "Transactions",
     dashboard: "Dashboard",
     settings: "Settings",
-    monzo: "Monzo import",
+    monzo: "Get from Monzo",
     empty: "No transactions",
     new: "New transaction",
     date: "Date",
@@ -55,10 +55,16 @@ const words = {
     missingRate: "Add the missing exchange rate in Settings.",
     tokenRejected: "Paste a fresh Monzo token.",
     unavailable: "The service is unavailable. Try again.",
-    startRequired: "Choose an import start date.",
-    import: "Import",
-    token: "One-use access token",
-    since: "Start date",
+    startRequired: "Add a transaction or choose a start date first.",
+    import: "Get transactions",
+    token: "Temporary Monzo access token",
+    tokenHelp: "Kept only while choosing an account, then cleared.",
+    since: "Start earlier (optional)",
+    account: "Monzo account",
+    accountPlaceholder: "Choose an account",
+    accountChoice: "This token can access more than one account. Choose the account to import.",
+    accountInvalid: "That account does not match this token. Try again.",
+    accountMissing: "No Monzo account was available for this token.",
     result: "Import completed",
     pending: "Backups pending",
     backed: "Backup queue clear",
@@ -88,7 +94,7 @@ const words = {
     transactions: "Transazioni",
     dashboard: "Riepilogo",
     settings: "Impostazioni",
-    monzo: "Importa Monzo",
+    monzo: "Scarica da Monzo",
     empty: "Nessuna transazione",
     new: "Nuova transazione",
     date: "Data",
@@ -122,10 +128,16 @@ const words = {
     missingRate: "Aggiungi il tasso di cambio mancante nelle Impostazioni.",
     tokenRejected: "Incolla un nuovo token Monzo.",
     unavailable: "Il servizio non è disponibile. Riprova.",
-    startRequired: "Scegli la data iniziale.",
-    import: "Importa",
-    token: "Token di accesso monouso",
-    since: "Data iniziale",
+    startRequired: "Aggiungi prima una transazione o scegli una data iniziale.",
+    import: "Scarica transazioni",
+    token: "Token temporaneo di Monzo",
+    tokenHelp: "Mantenuto solo per scegliere il conto, poi cancellato.",
+    since: "Importa da una data precedente (opzionale)",
+    account: "Conto Monzo",
+    accountPlaceholder: "Scegli un conto",
+    accountChoice: "Questo token accede a più conti. Scegli quale importare.",
+    accountInvalid: "Questo conto non corrisponde al token. Riprova.",
+    accountMissing: "Nessun conto Monzo disponibile per questo token.",
     result: "Importazione completata",
     pending: "Backup in attesa",
     backed: "Coda backup completata",
@@ -254,6 +266,8 @@ function errorText(code) {
       version_conflict: "conflict",
       monzo_token_rejected: "tokenRejected",
       import_start_required: "startRequired",
+      monzo_account_invalid: "accountInvalid",
+      monzo_account_not_found: "accountMissing",
       invalid_input: "invalid",
     }[code] || "unavailable",
   );
@@ -268,6 +282,7 @@ async function api(path, method = "GET", body) {
   if (!response.ok) {
     const error = Error(errorText(data.error?.code));
     error.code = data.error?.code;
+    error.details = data.error?.details || {};
     throw error;
   }
   return data;
@@ -314,7 +329,9 @@ function nav() {
     "dashboard",
     "transactions",
     "settings",
-    ...(selected.monzo_linked ? ["monzo"] : []),
+    ...(selected.name === "Matteo" && selected.category_profile === "personal"
+      ? ["monzo"]
+      : []),
   ]
     .map((k) => button(`${k}-nav`, w(k)))
     .join("");
@@ -706,24 +723,43 @@ function drawRates() {
 }
 function monzo() {
   const g = generation;
-  main.innerHTML = `<form id="monzo-form"><h2>${w("monzo")}</h2>${label("token", input("monzo-token", "password", "", 'autocomplete="off" required'))}${label("since", input("monzo-since", "date"))}${button("monzo-import", w("import"), 'type="submit"')}${test("monzo-result", "p", "", 'role="status" hidden')}${test("monzo-error", "p", "", 'role="alert" class="error" hidden')}</form>`;
+  main.innerHTML = `<form id="monzo-form"><h2>${w("monzo")}</h2>${label("token", input("monzo-token", "password", "", 'autocomplete="off" required'))}<p>${esc(w("tokenHelp"))}</p>${label("since", input("monzo-since", "date"))}${test("monzo-account-choice", "div", "", "hidden")}${button("monzo-import", w("import"), 'type="submit"')}${test("monzo-result", "p", "", 'role="status" hidden')}${test("monzo-error", "p", "", 'role="alert" class="error" hidden')}</form>`;
   $("#monzo-form").onsubmit = async (e) => {
     e.preventDefault();
     const token = $('[data-testid="monzo-token"]'),
       btn = $('[data-testid="monzo-import"]');
+    const accountSelect = $('[data-testid="monzo-account-select"]');
+    if (accountSelect && !accountSelect.value) {
+      accountSelect.reportValidity();
+      return;
+    }
+    const error = $('[data-testid="monzo-error"]');
+    error.hidden = true;
+    error.textContent = "";
     btn.disabled = true;
+    let keepToken = false;
     try {
       const b = { access_token: token.value };
+      if (accountSelect) b.account_id = accountSelect.value;
       if (val("monzo-since")) b.since = `${val("monzo-since")}T00:00:00Z`;
       const r = await api(`${base()}/imports/monzo`, "POST", b);
       if (g !== generation) return;
+      $("[data-testid=monzo-account-choice]").hidden = true;
       const result = $('[data-testid="monzo-result"]');
       result.hidden = false;
       result.textContent = `${w("result")}: ${r.inserted} ${w("inserted")}, ${r.duplicates} ${w("duplicates")}, ${r.excluded} ${w("excluded")}, ${r.reconciled} ${w("reconciled")}`;
     } catch (e) {
-      showError("monzo-error", e);
+      if (e.code === "monzo_account_selection_required" && Array.isArray(e.details?.accounts)) {
+        const options = [["", w("accountPlaceholder")], ...e.details.accounts.map((a) => [a.id, `${a.description} (${a.id})`])];
+        const choice = $("[data-testid=monzo-account-choice]");
+        choice.innerHTML = `<p>${esc(w("accountChoice"))}</p>${label("account", select("monzo-account-select", options, ""))}`;
+        choice.hidden = false;
+        keepToken = true;
+      } else {
+        showError("monzo-error", e);
+      }
     } finally {
-      token.value = "";
+      if (!keepToken) token.value = "";
       btn.disabled = false;
       await backupStatus();
     }

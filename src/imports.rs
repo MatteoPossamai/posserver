@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
+    io::Read,
     path::Path,
     time::{Duration, Instant},
 };
@@ -339,6 +340,73 @@ fn raw(v: &Value) -> Result<Raw> {
         unknown,
     })
 }
+fn monzo_json(
+    client: &reqwest::blocking::Client,
+    config: &Config,
+    token: &str,
+    endpoint: &str,
+    max_bytes: usize,
+) -> Result<Value> {
+    let response = client
+        .get(format!(
+            "{}/{}",
+            config.monzo.base_url.trim_end_matches('/'),
+            endpoint
+        ))
+        .bearer_auth(token)
+        .send()
+        .map_err(|_| Error::new(502, "monzo_unavailable"))?;
+    match response.status().as_u16() {
+        200 => {}
+        401 | 403 => return Err(Error::new(422, "monzo_token_rejected")),
+        429 => return Err(Error::new(503, "monzo_rate_limited")),
+        _ => return Err(Error::new(502, "monzo_unavailable")),
+    }
+    let mut bytes = Vec::new();
+    response
+        .take(max_bytes as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| Error::new(502, "monzo_unavailable"))?;
+    if bytes.len() > max_bytes {
+        return Err(Error::new(502, "monzo_invalid_response"));
+    }
+    serde_json::from_slice(&bytes).map_err(|_| Error::new(502, "monzo_invalid_response"))
+}
+fn monzo_accounts(
+    client: &reqwest::blocking::Client,
+    config: &Config,
+    token: &str,
+) -> Result<Vec<(String, String)>> {
+    let response = monzo_json(client, config, token, "accounts", 1024 * 1024)?;
+    let accounts = response["accounts"]
+        .as_array()
+        .filter(|accounts| accounts.len() <= 100)
+        .ok_or(Error::new(502, "monzo_invalid_response"))?;
+    let mut found = Vec::with_capacity(accounts.len());
+    let mut ids = std::collections::HashSet::new();
+    for account in accounts {
+        let id = account["id"]
+            .as_str()
+            .ok_or(Error::new(502, "monzo_invalid_response"))?;
+        if !id.starts_with("acc_") {
+            continue;
+        }
+        if id.len() > 128 {
+            return Err(Error::new(502, "monzo_invalid_response"));
+        }
+        if !ids.insert(id) {
+            return Err(Error::new(502, "monzo_invalid_response"));
+        }
+        let description = account["description"]
+            .as_str()
+            .unwrap_or("Monzo account")
+            .chars()
+            .take(120)
+            .collect();
+        found.push((id.to_string(), description));
+    }
+    Ok(found)
+}
 pub fn monzo(
     path: &Path,
     config: &Config,
@@ -348,41 +416,27 @@ pub fn monzo(
 ) -> Result<Value> {
     let resolved = db::resolve(path)?;
     let path = resolved.as_path();
-    fields(b, &["access_token", "since"], &["access_token"])?;
+    fields(
+        b,
+        &["access_token", "since", "account_id"],
+        &["access_token"],
+    )?;
     let token = string(b, "access_token")?;
     if token.trim().is_empty() || token.len() > 8192 {
         return Err(invalid());
     }
-    let c = db::open(path)?;
-    db::user(&c, uid)?;
-    let account: String = c
-        .query_row(
-            "SELECT account_id FROM monzo_links WHERE user_id=?1",
-            [uid],
-            |r| r.get(0),
-        )
-        .optional()?
-        .ok_or(Error::new(409, "monzo_not_linked"))?;
+    let requested_account = b
+        .get("account_id")
+        .map(|value| {
+            value
+                .as_str()
+                .filter(|id| !id.trim().is_empty())
+                .ok_or_else(invalid)
+        })
+        .transpose()?;
     let _lock =
         crate::backup::Lock::acquire(&path.with_extension(format!("import-{uid}.lock")), false)
             .map_err(|_| Error::new(409, "import_in_progress"))?;
-    let saved:Option<(Option<String>,Option<i64>,Option<i64>)>=c.query_row("SELECT last_transaction_id,last_created_at,seed_since FROM monzo_sync WHERE user_id=?1 AND account_id=?2",params![uid,account],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
-    let old_id = saved.as_ref().and_then(|s| s.0.clone());
-    let old_time = saved.as_ref().and_then(|s| s.1);
-    let since = if b.get("since").is_some() {
-        f::instant(string(b, "since")?)?
-    } else {
-        saved
-            .as_ref()
-            .and_then(|s| s.1.or(s.2))
-            .ok_or(Error::new(422, "import_start_required"))?
-            .checked_sub(1_000_000)
-            .ok_or_else(invalid)?
-    };
-    let mut cursor = chrono::DateTime::from_timestamp_micros(since)
-        .ok_or_else(invalid)?
-        .to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true);
-    drop(c);
     let _guard = metrics
         .map(|m| crate::metrics::GaugeGuard::new(m.gauge("posserver_monzo_imports_in_flight")));
     let duration = Instant::now();
@@ -392,6 +446,75 @@ pub fn monzo(
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|_| Error::new(502, "monzo_unavailable"))?;
+        let c = db::open(path)?;
+        let user = db::user(&c, uid)?;
+        if user.name != "Matteo" || user.category_profile != "personal" {
+            return Err(Error::new(403, "monzo_not_available_for_user"));
+        }
+        let latest_transaction: Option<i64> = c.query_row(
+            "SELECT MAX(occurred_at) FROM transactions WHERE user_id=?1 AND deleted_at IS NULL",
+            [uid],
+            |row| row.get(0),
+        )?;
+        let linked: Option<String> = c
+            .query_row(
+                "SELECT account_id FROM monzo_links WHERE user_id=?1",
+                [uid],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let (account, bind_account) = match linked {
+            Some(account) => {
+                if requested_account.is_some_and(|requested| requested != account) {
+                    return Err(Error::new(409, "monzo_account_conflict"));
+                }
+                (account, false)
+            }
+            None => {
+                let accounts = monzo_accounts(&client, config, token)?;
+                let account = match requested_account {
+                    Some(requested) => accounts
+                        .iter()
+                        .find(|(id, _)| id == requested)
+                        .map(|(id, _)| id.clone())
+                        .ok_or(Error::new(409, "monzo_account_invalid"))?,
+                    None if accounts.len() == 1 => accounts[0].0.clone(),
+                    None if accounts.is_empty() => {
+                        return Err(Error::new(409, "monzo_account_not_found"));
+                    }
+                    None => {
+                        return Err(Error::new(409, "monzo_account_selection_required").detail(
+                            json!({"accounts":accounts.iter().map(|(id,description)|json!({"id":id,"description":description})).collect::<Vec<_>>()}),
+                        ));
+                    }
+                };
+                (account, true)
+            }
+        };
+        let saved: Option<(Option<String>, Option<i64>, Option<i64>)> = c
+            .query_row(
+                "SELECT last_transaction_id,last_created_at,seed_since FROM monzo_sync WHERE user_id=?1 AND account_id=?2",
+                params![uid, account],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?;
+        let old_id = saved.as_ref().and_then(|state| state.0.clone());
+        let old_time = saved.as_ref().and_then(|state| state.1);
+        let since = if b.get("since").is_some() {
+            f::instant(string(b, "since")?)?
+        } else {
+            saved
+                .as_ref()
+                .and_then(|state| state.1.or(state.2))
+                .or(latest_transaction)
+                .ok_or(Error::new(422, "import_start_required"))?
+                .checked_sub(1_000_000)
+                .ok_or_else(invalid)?
+        };
+        let mut cursor = chrono::DateTime::from_timestamp_micros(since)
+            .ok_or_else(invalid)?
+            .to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true);
+        drop(c);
         let mut staged: Vec<Raw> = Vec::new();
         let mut seen = HashMap::new();
         let mut previous_time = None;
@@ -423,7 +546,6 @@ pub fn monzo(
             }
             let mut bounded = res.take(16 * 1024 * 1024 + 1);
             let mut bytes = Vec::new();
-            use std::io::Read;
             bounded
                 .read_to_end(&mut bytes)
                 .map_err(|_| Error::new(502, "monzo_unavailable"))?;
@@ -472,6 +594,9 @@ pub fn monzo(
         }
         let mut c = db::open(path)?;
         let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        if bind_account {
+            bind(&tx, uid, &account)?;
+        }
         let (mut inserted, mut duplicates, mut excluded, mut reconciled, mut unknown) =
             (0, 0, 0, 0, 0);
         for r in &staged {
@@ -556,7 +681,7 @@ pub fn monzo(
         if cursor_changed {
             tx.execute("INSERT INTO monzo_sync(user_id,account_id,last_transaction_id,last_created_at) VALUES(?1,?2,?3,?4) ON CONFLICT(user_id) DO UPDATE SET last_transaction_id=excluded.last_transaction_id,last_created_at=excluded.last_created_at",params![uid,account,last_id,last_time])?;
         }
-        let rev = if inserted + reconciled > 0 || cursor_changed {
+        let rev = if bind_account || inserted + reconciled > 0 || cursor_changed {
             db::commit_revision(&tx)?
         } else {
             db::revision(&tx)?

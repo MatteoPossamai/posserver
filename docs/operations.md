@@ -56,11 +56,13 @@ The Dropbox `personal_data/transactions.csv` source uses one or two fractional d
 source only, opt into `--legacy-decimals`; values are scaled exactly with integer arithmetic, and
 the importer still hashes the untouched original CSV bytes. The default importer remains strict.
 
-Paste a current access token into the linked user's import form. Choose an explicit start date
-when there is no migrated seed or prior cursor. It is sent only in that request and is cleared
-from the form on completion/error. No Monzo refresh or token persistence exists. Wider replay can
-be requested explicitly; it does not move the saved cursor into an older range. The provider's
-history window and object-ID pagination must be checked live before claiming a complete import.
+Select Matteo, open **Get from Monzo**, and paste a current access token. On first use the server
+discovers the account from the token; if it finds more than one, choose the intended account in
+the form. The server starts one second before Matteo's latest saved transaction, then paginates
+and saves the results. Use **Start earlier** only when you intentionally want a wider replay.
+The token is request-only; there is no refresh or background import. Monzo can restrict older
+history to 90 days after the first five minutes of authentication, so perform the initial fetch
+promptly and compare the imported range with the Monzo app.
 
 ## Dropbox OAuth and backups
 
@@ -99,7 +101,7 @@ fsynced and atomically published. Their revision is read from the snapshot itsel
 lock serializes snapshot/upload jobs. The immutable revision DB is uploaded before the manifest;
 only then are covered outbox entries acknowledged. A newer write during upload stays queued.
 Same-revision retries reuse the exact verified snapshot bytes. Keep the newest two completed local
-and Dropbox snapshots; pending local snapshots are protected. Failed remote retention is visible
+and five completed Dropbox snapshots; pending local snapshots are protected. Failed remote retention is visible
 and retried on a later job. Cleanup failure does not invalidate a confirmed upload.
 
 `GET /api/v1/backups/status` reports local/current/provider revisions and pending/error state.

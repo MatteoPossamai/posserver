@@ -16,6 +16,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+const DROPBOX_RETENTION: usize = 5;
+
 pub struct Lock(File);
 impl Lock {
     pub fn acquire(path: &Path, shared: bool) -> Result<Self> {
@@ -296,7 +298,7 @@ pub fn run(
         .unwrap_or_default();
     if provider == "dropbox"
         && pending == 0
-        && retained.len() <= 2
+        && retained.len() <= DROPBOX_RETENTION
         && db::op(&c, "dropbox_revision")?.is_some()
     {
         return Ok(json!({"revision":db::op_number(&c,"dropbox_revision")?,"skipped":true}));
@@ -547,7 +549,7 @@ fn prune_remote(path: &Path, config: &Config) -> Result<()> {
     let mut retained: Vec<i64> = db::op(&c, "dropbox_retained")?
         .and_then(|v| serde_json::from_str(&v).ok())
         .unwrap_or_default();
-    if retained.len() <= 2 {
+    if retained.len() <= DROPBOX_RETENTION {
         return Ok(());
     }
     let d = config.backup.dropbox.as_ref().unwrap();
@@ -557,7 +559,7 @@ fn prune_remote(path: &Path, config: &Config) -> Result<()> {
         None => refresh(&client, d)?,
     };
     let mut refreshed = d.access_token.is_none();
-    while retained.len() > 2 {
+    while retained.len() > DROPBOX_RETENTION {
         let oldest = *retained.last().unwrap();
         loop {
             let response=client.post(format!("{}/2/files/delete_v2",d.api_base_url.trim_end_matches('/'))).bearer_auth(&token).json(&json!({"path":format!("{}/revisions/{oldest}.sqlite",d.root.trim_end_matches('/'))})).send().map_err(|_|Error::new(503,"retention_failed"))?;

@@ -22,6 +22,8 @@ The database on the phone is the live copy. Each successful change and its backu
 
 The versioned API is under `/api/v1`: users and settings, transactions, monthly reports, Monzo imports, and backup status/retry. `/healthz` reports readiness; `/metrics` serves operational metrics. There is no login. Anyone who can reach the server can view and change its data.
 
+For Monzo, Matteo starts a manual import from the website with a temporary access token. Posserver considers account IDs beginning `acc_`; it uses the account automatically when there is one, and asks Matteo to choose only when there are several. It then requests pages and saves them to SQLite. The first import starts from Matteo's latest saved transaction; later imports use the saved Monzo cursor. The token is not stored and there is no automatic refresh.
+
 ## Run locally
 
 ```sh

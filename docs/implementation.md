@@ -2,8 +2,9 @@
 
 The user authorized implementation after the design-only phase. The Rust service, embedded
 mobile UI, migration/reconciliation/setup CLIs, backups and monitoring are implemented locally.
-Native ARM64 phone deployment and basic lifecycle checks are verified below. No real bank request, Dropbox
-authorization has been performed.
+Native ARM64 phone deployment and basic lifecycle checks are verified below. Dropbox is configured
+and its first live backup completed; a restore drill has not yet been performed. Monzo import uses
+real access tokens but no background refresh is implemented.
 
 ## Implemented behavior
 
@@ -23,24 +24,19 @@ authorization has been performed.
 - Embedded English/Italian mobile HTML/CSS/JS with exact decimal entry, local-noon dates,
   reports/charts, directed FX settings, conflict handling, one-use token clearing and backup state.
   Response generation checks prevent old requests from changing a newly selected user's view.
+- Matteo-only Monzo form discovers accounts from the supplied token, asks for a choice when needed,
+  starts first import from his latest saved transaction, and saves the binding only with a successful
+  import. Tokens are never stored; refresh and scheduled imports are not implemented.
 - Cached Prometheus endpoint, HTTP/DB/import/job metrics, readiness/stale-state handling and
   native cached process CPU/RSS. The scrape job and Grafana dashboard are installed in the
   existing phome monitoring stack. Operator setup steps are in USER.md.
 
 ## Automated verification
 
-The unchanged original Rust contract suite has **50 passing tests**, including 48 tests exercised
-against a real service and two specification tests. Product unit tests add **4 passing checks**.
-`tests/operational.rs` adds **42 passing black-box checks**; none are ignored. Original browser
-flows remain intact: all **13 browser tests pass**, including the original 10 and three new
-large-money, local-timezone and late-response checks.
-
-`scripts/check` builds the binary and runs formatting, warning-free product/new-test Clippy,
-all 96 Rust checks, JS syntax and an isolated Chromium browser server. Both debug and optimized
-service binaries passed all 92 independent Rust contracts/operational checks and all 13 browser
-flows; the four product unit checks also pass. The preserved contract
-file has one pre-existing style-only Clippy warning, so its runtime behavior is tested without
-rewriting it for lint preferences. Cargo/npm lockfiles pin dependency resolution.
+Latest local verification: `scripts/check` passed formatting, warning-free product and operational
+Clippy, 94 Rust checks (4 unit, 51 contract, 39 operational), JavaScript syntax, 14 isolated
+Chromium browser tests, and 6 deployment-script checks. The contract file retains one style-only
+Clippy warning; its runtime tests pass. No live Monzo request was made.
 
 Fault/operational coverage includes:
 
@@ -48,7 +44,8 @@ Fault/operational coverage includes:
 - Real SQLite page exhaustion for domain writes and snapshots; failed outbox insertion;
   snapshot permission denial, external busy writer and consistent snapshot during an uncommitted write.
 - Simultaneous versioned edits and imports, byte/manifest hashing, late writes during upload,
-  coalescing, pending protection, latest-two retention, stale-known-revision rejection and recovery.
+  coalescing, pending protection, latest-two local/latest-five Dropbox retention,
+  stale-known-revision rejection and recovery.
 - Dropbox refresh success/failure, bounded Retry-After, partial manifest publication, interrupted
   job retry state, offline OAuth setup and private config persistence. Already-removed retention
   objects are idempotent according to the [Dropbox API specification](https://github.com/dropbox/dropbox-api-spec/blob/main/files.stone).
@@ -131,6 +128,21 @@ historical EUR rows, so older converted totals are estimates rather than transac
 The September 2026 dashboard report now loads with nine categories that contain spending.
 
 
+## Matteo's manual Monzo import — 2026-10-03
+
+Added account discovery from the temporary access token, filtering to account IDs beginning
+`acc_`, automatic selection when exactly one is available, account choice when several are
+available, and server-side restriction to Matteo's personal user. First import uses one second
+before his latest non-deleted database transaction; later imports keep using the saved Monzo
+cursor. Account binding and transaction changes commit together only after every page is validated.
+Browser tests check Matteo-only visibility, safe account labels, account choice and token clearing.
+Full automated results are recorded above. Deployed natively with
+`scripts/phone deploy --bind 100.108.243.40:8080`; phone health returned `ok`, Dropbox remained
+current with no pending work, and the existing Prometheus/Grafana stack remained up. Matteo has
+since completed a live import; compare its date range and totals with Monzo before treating the
+database as authoritative.
+
+
 ## Matteo's UI recovery — 2026-10-02
 
 Reproduced the reported “service unavailable” page in a mobile browser. The dashboard asked
@@ -167,3 +179,19 @@ At Matteo's request, the existing Tailscale Funnel node now publishes the app on
 health endpoint and app page, plus the Grafana API for the posserver dashboard (16 panels). This
 v1 has no authentication, so the public URL permits anyone to view and change data. Funnel
 availability still depends on the phone and Termux remaining online.
+
+
+## SQLite authority and Dropbox retention — 2026-10-03
+
+Matteo selected SQLite as the source of truth. The imported CSV is now a historical archive and
+is not synchronized with website changes. Dropbox retention is five completed remote revisions;
+the phone still keeps two completed local snapshots. Every domain change receives a revision, but
+queued changes can share a newer snapshot. Older Dropbox snapshots are removed only after a newer
+snapshot and manifest upload successfully.
+
+Changed the retention limit and operational test. Local Cargo tests could not be run because
+`cargo` is not installed on the laptop. Deployed with `scripts/phone deploy --bind
+100.108.243.40:8080`; the native phone build succeeded, runit restarted the service, `/healthz`
+returned `ok`, and backup status reported current/local/Dropbox revision 8 with zero pending and
+no error. The live pruning path has not been exercised because fewer than five revisions are
+currently retained; the cap applies as future backups arrive.

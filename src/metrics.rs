@@ -96,9 +96,7 @@ impl Metrics {
             &["provider"],
         )
         .unwrap();
-        for p in ["dropbox"] {
-            last_duration.with_label_values(&[p]).set(0.);
-        }
+        last_duration.with_label_values(&["dropbox"]).set(0.);
         registry.register(Box::new(last_duration.clone())).unwrap();
         let counters = IntCounterVec::new(
             Opts::new("posserver_db_errors_total", "Database storage errors"),
@@ -209,9 +207,7 @@ impl Metrics {
             &["provider"],
         )
         .unwrap();
-        for p in ["dropbox"] {
-            backup_duration.with_label_values(&[p]);
-        }
+        backup_duration.with_label_values(&["dropbox"]);
         registry
             .register(Box::new(backup_duration.clone()))
             .unwrap();
@@ -297,7 +293,8 @@ impl Metrics {
             .map(|key| db::op_number(&c, key))
             .collect::<Result<Vec<_>>>()?;
         let mut providers = Vec::new();
-        for p in ["dropbox"] {
+        {
+            let p = "dropbox";
             let keys = [
                 "revision",
                 "attempt_at",
@@ -344,8 +341,7 @@ impl Metrics {
         }
         for (p, v, dur) in providers {
             self.provider("posserver_backup_configured", &[p]).set(
-                if (p == "dropbox" && config.backup.dropbox.is_some())
-                {
+                if p == "dropbox" && config.backup.dropbox.is_some() {
                     1
                 } else {
                     0

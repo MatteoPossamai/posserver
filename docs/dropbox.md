@@ -10,7 +10,7 @@ You need the Dropbox account owner, the `posserver-data` app key and app secret,
 2. From an interactive laptop terminal in this repository, run `scripts/setup-dropbox --app-key YOUR_APP_KEY`.
 3. Approve Dropbox access in the browser. Paste the one-time authorization code into the hidden prompt. The helper sends the setup input directly to the phone over SSH; it does not save a laptop credential file.
 4. Wait for the helper to finish. It configures the phone, makes a first backup, restarts posserver, and waits for the backup status check. Success means Dropbox is configured, pending revisions are zero, and the Dropbox revision matches the local snapshot revision.
-5. Open **Settings → Backups** and confirm it shows current. In Dropbox, the app folder contains a manifest and revision snapshots. The service keeps the newest two completed remote snapshots.
+5. Open **Settings → Backups** and confirm it shows current. In Dropbox, the app folder contains a manifest and revision snapshots. The service keeps the newest five completed remote snapshots and removes older revisions after a newer backup succeeds. Local phone storage keeps the newest two completed snapshots.
 
 The phone stores credentials in `$PREFIX/data/posserver/config.json` with private file permissions. Keep this file out of Git. To recover after phone loss, use the encrypted copy maintained in `../../phome_srvr`; see [phome's recovery steps](../../phome_srvr/docs/posserver-backup.md).
 
