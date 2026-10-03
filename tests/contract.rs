@@ -914,39 +914,6 @@ fn failed_dropbox_keeps_pending_local_write_and_retry_catches_up() {
     );
 }
 #[test]
-fn drive_uses_one_overwritten_destination_and_failure_does_not_claim_success() {
-    use std::os::unix::fs::PermissionsExt;
-    let a = App::new();
-    a.user("Matteo", "personal", "UTC");
-    let fake = a.dir.path().join("rclone");
-    let log = a.dir.path().join("rclone.log");
-    fs::write(&fake,"#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$POSSERVER_TEST_RCLONE_LOG\"\nexit \"${POSSERVER_TEST_RCLONE_EXIT:-0}\"\n").unwrap();
-    fs::set_permissions(&fake, fs::Permissions::from_mode(0o700)).unwrap();
-    let invoke = |exit: &str| {
-        Command::new(std::env::var_os("POSSERVER_BIN").unwrap())
-            .args(["backup-drive", "--db"])
-            .arg(&a.db)
-            .arg("--config")
-            .arg(&a.config)
-            .arg("--force")
-            .env("POSSERVER_RCLONE_BIN", &fake)
-            .env("POSSERVER_TEST_RCLONE_LOG", &log)
-            .env("POSSERVER_TEST_RCLONE_EXIT", exit)
-            .output()
-            .unwrap()
-    };
-    assert!(!invoke("1").status.success());
-    assert!(a.status()["drive_revision"].is_null());
-    output_json(&invoke("0"));
-    output_json(&invoke("0"));
-    let calls = fs::read_to_string(log).unwrap();
-    assert!(calls.contains("copyto"));
-    assert!(calls.contains("gdrive:posserver/database.sqlite"));
-    assert!(calls.contains("gdrive:posserver/manifest.json"));
-    assert!(!calls.contains(" sync "));
-    assert_eq!(a.status()["drive_revision"], a.status()["current_revision"]);
-}
-#[test]
 fn restore_rejects_hash_mismatch_without_overwriting_destination() {
     let a = App::new();
     a.user("Matteo", "personal", "UTC");
@@ -1200,35 +1167,6 @@ fn monzo_conflicting_duplicate_ids_abort() {
         "monzo_invalid_response",
     );
     assert!(a.rows(id(&u)).is_empty());
-}
-#[test]
-fn drive_skips_second_run_inside_hour() {
-    use std::os::unix::fs::PermissionsExt;
-    let a = App::new();
-    a.user("Matteo", "personal", "UTC");
-    let fake = a.dir.path().join("rclone");
-    let log = a.dir.path().join("hour.log");
-    fs::write(
-        &fake,
-        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$POSSERVER_TEST_RCLONE_LOG\"\nexit 0\n",
-    )
-    .unwrap();
-    fs::set_permissions(&fake, fs::Permissions::from_mode(0o700)).unwrap();
-    let run = || {
-        Command::new(std::env::var_os("POSSERVER_BIN").unwrap())
-            .args(["backup-drive", "--db"])
-            .arg(&a.db)
-            .arg("--config")
-            .arg(&a.config)
-            .env("POSSERVER_RCLONE_BIN", &fake)
-            .env("POSSERVER_TEST_RCLONE_LOG", &log)
-            .output()
-            .unwrap()
-    };
-    output_json(&run());
-    let before = fs::read(&log).unwrap();
-    output_json(&run());
-    assert_eq!(fs::read(log).unwrap(), before);
 }
 #[test]
 fn restore_valid_snapshot_preserves_reports() {

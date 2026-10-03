@@ -1,23 +1,32 @@
-# Fresh-agent handover
+# posserver instructions
 
-Read README.md, docs/design.md, docs/api.md, docs/categories.json, docs/monitoring.md and
-tests/README.md before implementation. They contain the agreed behaviour and verification limits.
+## Read first
 
-This repository now contains the implemented service; read docs/implementation.md for verified status.
-Follow the current user's task: implement
-only when asked to implement; a documentation request does not authorize coding/deployment.
-The original design-only restriction applies to that completed phase.
+Start with README.md for the human model and docs/handover.md if present. This repository has no handover file currently. Read docs/implementation.md for installed and verified state before changing operational claims.
 
-For implementation, preserve contracts/synthetic fixtures. Make tests pass against a real Rust
-service, not a fake; add the documented fault/monitoring tests. Root Cargo.toml defines the product and independent tests. Preserve `cargo test --test contract`.
-Do not silently skip tests or weaken them to match implementation bugs.
+## Human docs and implementation references
 
-Production account binding, Dropbox credentials and rclone remote are operator setup inputs,
-not prerequisites for local coding/tests. Use synthetic providers first. Do not retrieve/copy
-credentials from old conversation history. Keep runtime DB/config/credentials out of Git.
-Read neighboring pf_tools/phome_srvr when available; the documented contracts stand alone if
-absent. Before deployment changes read phome_srvr's current instructions and handover.
+- README.md and docs/dropbox.md are for the operator: explain only the moving parts, setup, checks, and recovery in plain language.
+- docs/operations.md covers phone commands, deployment, and restoring a database. Keep it actionable.
+- docs/api.md and docs/monitoring.md are detailed contracts for implementation work. They are intentionally denser than the human guides.
+- docs/design.md and USER.md contain Monzo plan/setup guidance. Do not edit either unless the user explicitly asks to change that plan.
+- docs/implementation.md records actual changes and verification. Separate local tests from phone/provider checks.
 
-Use documented defaults and judgment for routine engineering choices. Missing operator values
-need only be requested at setup. Do not claim live backup, ARM deployment or unattended reliability
-from local tests. Keep documentation and implemented/tested/deployed status current.
+Do not copy detailed monitoring configuration from `../phome_srvr`; that repository owns Prometheus, Grafana, and the scheduler. This repo owns only posserver and its application config.
+
+## Runtime boundaries
+
+- The Rust binary and SQLite database run natively in Termux. The phone path is `$PREFIX/data/posserver`; releases are under `$PREFIX/apps/posserver`.
+- `scripts/phone` builds on the phone and controls its existing runit service. Preserve runtime config, database, snapshots, and release rollback behavior during deployment changes.
+- Dropbox is the only remote backup provider. Google Drive support was removed. Do not reintroduce it without a new request.
+- Dropbox OAuth credentials, database files, tokens, and real financial data stay out of Git. Use synthetic fixtures for development.
+- The Monzo UI accepts a one-use access token. Never persist, log, or put it in a URL. Do not claim background OAuth refresh or scheduled imports exist.
+- Public access has no application authentication. Say so clearly when describing the live URL.
+
+## Changes and checks
+
+- Preserve API contracts and synthetic fixtures unless the requested change requires a contract update. Use the real Rust service in acceptance tests. Do not weaken tests to hide defects.
+- Do not deploy or claim device verification unless the user asks for it and it is actually completed. Do not reboot the phone unexpectedly.
+- Keep examples generic; put device-specific live values in USER.md only when they are needed by the operator. Never include secrets.
+- Use `scripts/check` for the full local verification when the user asks to test or verify. Report exactly what ran and what remains unverified.
+- Update relevant human guidance when setup or recovery changes. Prefer one authoritative guide over duplicated instructions.

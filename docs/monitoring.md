@@ -33,7 +33,7 @@ Export operational state; finance amounts/balances remain in the reporting API.
 
 ## Required metrics
 
-Initialize bounded counter combinations at zero. `provider` is `dropbox|drive`. Timestamp gauges
+Initialize bounded counter combinations at zero. `provider` is `dropbox`. Timestamp gauges
 are Unix seconds, 0 before the first recorded event. Revision gauges use 0 before any confirmed
 snapshot/upload; check configured/success gauges to distinguish never configured from success.
 
@@ -108,8 +108,6 @@ Initial diagnostic thresholds, to tune against measured phone behaviour:
 - Prometheus-generated `up{job="posserver"}=0` for two minutes, or absent samples: unreachable target.
 - Ready/DB available=0 or state refresh age>45 seconds for one minute: unready/stuck service.
 - Dropbox configured, pending>0 and oldest pending age>300 seconds: committed writes await backup.
-- Drive configured and last success older than 7,200 seconds: hourly backups overdue. Never-successful
-  configured Drive needs a two-hour grace period from setup/startup before warning.
 - Rising DB errors, free bytes<268435456 for five minutes, or sustained RSS over measured budget:
   investigate storage/resources; allow expected import peaks.
 - 5xx fraction>5% over ten minutes with >=20 requests: investigate server errors; separate expected 4xx.

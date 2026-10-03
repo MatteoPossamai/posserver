@@ -77,7 +77,7 @@ impl Metrics {
             } else {
                 registry.register(Box::new(g.clone())).unwrap();
             }
-            for p in ["dropbox", "drive"] {
+            for p in ["dropbox"] {
                 if labels.len() == 2 {
                     for r in ["success", "failure"] {
                         g.with_label_values(&[p, r]).set(0);
@@ -96,7 +96,7 @@ impl Metrics {
             &["provider"],
         )
         .unwrap();
-        for p in ["dropbox", "drive"] {
+        for p in ["dropbox"] {
             last_duration.with_label_values(&[p]).set(0.);
         }
         registry.register(Box::new(last_duration.clone())).unwrap();
@@ -209,7 +209,7 @@ impl Metrics {
             &["provider"],
         )
         .unwrap();
-        for p in ["dropbox", "drive"] {
+        for p in ["dropbox"] {
             backup_duration.with_label_values(&[p]);
         }
         registry
@@ -297,7 +297,7 @@ impl Metrics {
             .map(|key| db::op_number(&c, key))
             .collect::<Result<Vec<_>>>()?;
         let mut providers = Vec::new();
-        for p in ["dropbox", "drive"] {
+        for p in ["dropbox"] {
             let keys = [
                 "revision",
                 "attempt_at",
@@ -345,7 +345,6 @@ impl Metrics {
         for (p, v, dur) in providers {
             self.provider("posserver_backup_configured", &[p]).set(
                 if (p == "dropbox" && config.backup.dropbox.is_some())
-                    || (p == "drive" && config.backup.drive.is_some())
                 {
                     1
                 } else {

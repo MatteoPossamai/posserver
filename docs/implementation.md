@@ -3,7 +3,7 @@
 The user authorized implementation after the design-only phase. The Rust service, embedded
 mobile UI, migration/reconciliation/setup CLIs, backups and monitoring are implemented locally.
 Native ARM64 phone deployment and basic lifecycle checks are verified below. No real bank request, Dropbox
-authorization or Google Drive upload has been performed.
+authorization has been performed.
 
 ## Implemented behavior
 
@@ -18,7 +18,7 @@ authorization or Google Drive upload has been performed.
 - Strict full-file CSV preview/migration with original byte hashes, aliases, provenance and
   ordinal identities; identity reconciliation CLI and immutable account-binding CLI.
 - Verified/fsynced immutable online SQLite snapshots, per-commit durable outbox, serialized
-  Dropbox/Drive jobs, bounded refresh/retries/timeouts, durable operational counters, restart
+  Dropbox jobs, bounded refresh/retries/timeouts, durable operational counters, restart
   recovery, newer-revision ordering, local/remote retention and validated atomic restore/rollback.
 - Embedded English/Italian mobile HTML/CSS/JS with exact decimal entry, local-noon dates,
   reports/charts, directed FX settings, conflict handling, one-use token clearing and backup state.
@@ -52,8 +52,6 @@ Fault/operational coverage includes:
 - Dropbox refresh success/failure, bounded Retry-After, partial manifest publication, interrupted
   job retry state, offline OAuth setup and private config persistence. Already-removed retention
   objects are idempotent according to the [Dropbox API specification](https://github.com/dropbox/dropbox-api-spec/blob/main/files.stone).
-- Drive interval/lock/timeout, actual synthetic file copying, partial DB/manifest rejection and
-  valid downloaded-byte restore. Real rclone/Drive OAuth and uploaded bytes remain unverified.
 - Running-server/symlink restore locks, future/incomplete schema/corruption/hash rejection and rollback files.
 - Prometheus content type/types/baseline zeros, bounded labels, request duration/in-flight cleanup,
   commit-only import counts, degraded readiness, stale cache, read-only scrapes, durable CLI/restart
@@ -85,20 +83,20 @@ all returned HTTP 200 afterward. Native CPU/RSS metrics are present; one empty-d
 RSS sample was 10,809,344 bytes (10.3 MiB), not an import/load measurement. The database was
 empty at initial deployment; Matteo's CSV was imported afterward (see below). No bank request or
 cloud upload was made. Data directory is mode 700, config/database 600. Existing phome-monitoring
-and sshd supervisor PIDs stayed unchanged. No Drive schedule or provider credentials were
-installed. No reboot or overnight test ran.
+and sshd supervisor PIDs stayed unchanged. No backup provider credentials were
+installed at that point. No reboot or overnight test ran.
 The optional Vault workflow has local synthetic pipeline coverage, not a live operator secret test.
 
 ## Remaining release gates and limits
 
 - Measured import memory/load and long-running phone reliability.
   Native ARM64 build and basic app lifecycle are verified; the laptop binary remains x86_64.
-- Dropbox app/OAuth, first live upload and restore drill. Google Drive is paused. Never retrieve
-  old credentials from conversation history.
+- Dropbox app/OAuth, first live upload and restore drill. Never retrieve old credentials from
+  conversation history.
 - Live Monzo chronology, object-ID pagination including timestamp ties, provider history window
   and deliberate wider replay. Mocks establish the implemented contract, not the bank's behavior.
-- Disposable live Dropbox/Drive upload/download/hash/integrity/restore, app-folder permissions
-  and OAuth refresh. Dropbox files above 150 MiB fail visibly; upload sessions are not implemented.
+- Disposable live Dropbox upload/download/hash/integrity/restore, app-folder permissions and
+  OAuth refresh. Dropbox files above 150 MiB fail visibly; upload sessions are not implemented.
 - Long-running phone operation, vendor Android background kills, supervised/physical reboot,
   real disk exhaustion/permissions under Termux and notification setup. These are not established
   by local process crash injection or Chromium tests.
@@ -112,7 +110,7 @@ The test fault inputs are process-local opt-in environment variables, never HTTP
 `POSSERVER_TEST_DB_MAX_PAGES` and `POSSERVER_TEST_SNAPSHOT_MAX_PAGES` set real SQLite capacity
 limits. Leave them unset in normal operation. File/provider/process fixtures use only synthetic data.
 
-Remote account configuration remains a setup step. Google Drive is paused; no CSV sync is planned.
+Remote account configuration remains a setup step. No CSV sync is planned.
 Repository changes are left reviewable without creating a commit.
 
 
@@ -139,7 +137,7 @@ Reproduced the reported “service unavailable” page in a mobile browser. The 
 for `/users/:id/latest`; the API route is `/users/:id/transactions/latest`, causing an HTTP 404
 and the generic UI error. Corrected the request and improved backup status to say “Backup not
 configured” when neither cloud provider is configured, rather than showing an endless pending
-state. Both Dropbox and Drive remain unconfigured.
+state. Dropbox remains unconfigured.
 
 
 ## Website icon — 2026-10-02

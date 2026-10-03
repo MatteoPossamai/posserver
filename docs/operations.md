@@ -64,10 +64,11 @@ history window and object-ID pagination must be checked live before claiming a c
 
 ## Dropbox OAuth and backups
 
-Use the app creation/offline OAuth instructions in [design.md](design.md#backup-durability-and-provider-setup).
-Enable content read/write and metadata write for retention. Request offline access when obtaining
-an authorization code. Feed the following JSON **on stdin**, from a private terminal/input file,
-to `posserver setup-dropbox --config PATH/config.json`:
+Use the human [Dropbox setup and recovery guide](dropbox.md). It covers app permissions, offline OAuth, phone setup and first-backup verification. For API/config details, see [api.md](api.md). The setup command accepts OAuth input on stdin:
+
+For the phone deployment, prefer the interactive [`scripts/setup-dropbox`](../scripts/setup-dropbox)
+helper documented in [USER.md](../USER.md). It prompts for credentials locally and performs the
+authorization, configuration, restart, first upload, and status check without a temporary secret file.
 
 ```json
 {"app_key":"YOUR_APP_KEY","app_secret":"YOUR_APP_SECRET","authorization_code":"FRESH_CODE","redirect_uri":"YOUR_REGISTERED_REDIRECT_URI"}
@@ -107,14 +108,17 @@ disabled. With providers absent, automatic mode still produces local verified sn
 `automatic:false` disables startup/timed/write-triggered backup work; it still records every outbox
 entry. Do not call retry in deterministic tests unless provider responses have been scripted.
 
-## Google Drive (paused)
+## Move the server
 
-Google Drive is paused by the operator. Do not create an rclone remote, add Drive credentials,
-or schedule `backup-drive`. The implementation remains in the code, but it is not part of the
-current setup. Dropbox is the planned backup provider.
+The app runs on the Termux phone at `$PREFIX/apps/posserver`; its live data is under `$PREFIX/data/posserver`. Monitoring, Tailscale Funnel, and the SSH alias are managed in `../../phome_srvr`. Moving the app means updating both repositories.
 
-The Drive provider remains dormant in the binary/config schema, but its setup instructions are
-intentionally omitted while it is paused.
+1. Set up Termux, SSH, Tailscale, and the `phone` SSH alias on the replacement using [phome setup](../../phome_srvr/docs/setup.md). Keep the existing Dropbox app credentials available through the encrypted config backup.
+2. If retaining the existing finance history, deploy posserver, stop it, restore a verified Dropbox snapshot using [the restore steps](dropbox.md#restore-a-snapshot), install the runtime config, then start it. For a new empty database, deploy and install config without restoring. Do not copy a live SQLite file while the old service is running.
+3. Deploy from this repository with the replacement phone's current private Tailscale IPv4 address: `scripts/phone deploy --bind PHONE_TAILSCALE_IP:8080`. Check `scripts/phone status` and `/healthz`.
+4. In `../../phome_srvr`, update the Prometheus posserver target, then reload its existing configuration. Update the existing Funnel route only if the public hostname/phone changes. Confirm Grafana and public/private health after changes.
+5. Keep the old phone and its data until the new service, reports, and Dropbox backup status are confirmed.
+
+Do not add Prometheus, Grafana, an extra scheduler, or a second SSH listener in this repository. Current addresses and installed state belong in the phome handover, not in this generic guide.
 
 ## Restore
 
@@ -193,8 +197,7 @@ through SSH stdin to an atomic mode-600 phone config file. It does not print cre
 credentials. Monzo access tokens remain request-only and must not be added to this file.
 Ansible Vault is an optional laptop dependency; no Ansible installation is needed on Android.
 
-Do not configure or schedule Google Drive while it is paused. Monitoring and dashboard are
-installed in phome's existing stack; do not install another scheduler or monitoring stack.
+Monitoring and dashboard are installed in phome's existing stack; do not install another scheduler or monitoring stack.
 
 The UI is a responsive website, served by this binary. There is currently no APK, Android
 wrapper, web app manifest or offline service worker. Use a mobile browser at the public Funnel URL

@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""Authorize Dropbox locally, configure the phone, and verify its first backup."""
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import termios
+import time
+from urllib.parse import urlencode
+import webbrowser
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def prompt_hidden(stream, prompt):
+    if not stream.isatty():
+        raise RuntimeError("interactive terminal input is required")
+    fd = stream.fileno()
+    previous = termios.tcgetattr(fd)
+    hidden = previous.copy()
+    hidden[3] &= ~termios.ECHO
+    sys.stderr.write(prompt)
+    sys.stderr.flush()
+    termios.tcsetattr(fd, termios.TCSAFLUSH, hidden)
+    try:
+        value = stream.readline()
+    finally:
+        termios.tcsetattr(fd, termios.TCSAFLUSH, previous)
+        sys.stderr.write("\n")
+        sys.stderr.flush()
+    return value.strip()
+
+
+def run_ssh(host, command, payload=None):
+    args = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", host, command]
+    subprocess.run(args, check=True, input=payload)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--app-key", required=True, help="Dropbox app key (not the app secret)")
+    parser.add_argument("--host", default="phone", help="existing SSH alias (default: phone)")
+    args = parser.parse_args()
+    if not args.app_key.strip() or args.host.startswith("-") or any(c.isspace() for c in args.host):
+        parser.error("invalid app key or SSH host")
+
+    auth_url = "https://www.dropbox.com/oauth2/authorize?" + urlencode(
+        {
+            "client_id": args.app_key,
+            "response_type": "code",
+            "token_access_type": "offline",
+            "scope": "files.content.write",
+        }
+    )
+
+    tty = None
+    try:
+        tty = open("/dev/tty", "r+")
+    except OSError:
+        if sys.stdin.isatty():
+            tty = sys.stdin
+        else:
+            parser.error("run this command from an interactive terminal")
+
+    try:
+        print("This opens Dropbox authorization for the posserver-data app.")
+        print("Approve access in Dropbox, then copy the code shown by Dropbox.")
+        app_secret = prompt_hidden(tty, "Dropbox app secret: ")
+        if not app_secret:
+            parser.error("app secret cannot be empty")
+        opened = webbrowser.open(auth_url)
+        if not opened:
+            print("Open this authorization URL in your browser:\n" + auth_url)
+        code = prompt_hidden(tty, "Dropbox authorization code: ")
+        if not code:
+            parser.error("authorization code cannot be empty")
+    except RuntimeError as error:
+        parser.error(str(error))
+    finally:
+        if tty is not sys.stdin:
+            tty.close()
+
+    setup_payload = json.dumps(
+        {
+            "app_key": args.app_key,
+            "app_secret": app_secret,
+            "authorization_code": code,
+        }
+    ).encode()
+    setup_command = (
+        '"$PREFIX/apps/posserver/current/posserver" setup-dropbox '
+        '--config "$PREFIX/data/posserver/config.json"'
+    )
+    run_ssh(args.host, setup_command, setup_payload)
+    app_secret = code = ""
+    setup_payload = b""
+
+    backup_command = (
+        '"$PREFIX/apps/posserver/current/posserver" backup-dropbox '
+        '--db "$PREFIX/data/posserver/database.sqlite" '
+        '--config "$PREFIX/data/posserver/config.json"'
+    )
+    try:
+        run_ssh(args.host, backup_command)
+    except subprocess.CalledProcessError:
+        print("The initial upload did not finish; restarting posserver so it can retry.", flush=True)
+    subprocess.run(
+        [str(ROOT / "scripts/phone"), "restart", "--host", args.host],
+        check=True,
+    )
+
+    import urllib.request
+
+    deadline = time.monotonic() + 180
+    status = {}
+    print("Waiting for the phone to confirm the Dropbox revision…", flush=True)
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(
+                "http://100.108.243.40:8080/api/v1/backups/status", timeout=10
+            ) as response:
+                status = json.load(response)
+            if (
+                status.get("dropbox_configured")
+                and status.get("pending") == 0
+                and status.get("dropbox_revision") == status.get("local_revision")
+            ):
+                break
+        except OSError:
+            pass
+        time.sleep(3)
+    print(
+        "Dropbox configured: "
+        f"{status.get('dropbox_configured')}; "
+        f"Dropbox revision: {status.get('dropbox_revision')}; "
+        f"local revision: {status.get('local_revision')}; "
+        f"pending revisions: {status.get('pending')}"
+    )
+    if (
+        not status.get("dropbox_configured")
+        or status.get("pending", 1) != 0
+        or status.get("dropbox_revision") != status.get("local_revision")
+    ):
+        raise SystemExit(
+            "Dropbox credentials were saved, but backup completion was not confirmed. "
+            "Check Settings → Backups in posserver."
+        )
+    print("First Dropbox backup completed and pending revisions are clear.")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(
+            f"Dropbox setup command failed with exit status {error.returncode}; "
+            "inspect its status output without sharing credentials."
+        ) from None

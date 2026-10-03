@@ -737,8 +737,7 @@ async function backupStatus() {
         "backup-status",
         "span",
         esc(
-          !((s.dropbox_configured ?? s.dropbox_revision !== null) ||
-            (s.drive_configured ?? s.drive_revision !== null))
+          !(s.dropbox_configured ?? s.dropbox_revision !== null)
             ? w("notConfigured")
             : s.pending
               ? w("pending")

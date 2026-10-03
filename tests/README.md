@@ -3,7 +3,7 @@
 The Rust crate now contains the real product plus independent black-box test infrastructure. `support.rs` launches a supplied
 service binary, uses independent temporary directories/ports for each test, and exposes synthetic
 Monzo/Dropbox HTTP endpoints. It kills test child processes during cleanup. No real token or
-transaction data is used. The rclone fixture logs arguments without reaching Google Drive.
+transaction data is used.
 
 ```sh
 cargo build --locked
@@ -22,11 +22,10 @@ latest, validation, optimistic edits/deletes, tied timestamp pagination, signed 
 DST/month boundaries, empty trends, exact directed FX, Monzo normalization/filtering/paging/replay,
 excluded-only pages, manual-history isolation, errors/rollback/stalls, edit preservation, CSV
 normalization/idempotence/dry-run/quoted fields/ambiguity, restart/outbox, Dropbox WAL snapshots,
-failed uploads, fixed Drive destinations and restore hash/corruption rejection.
+failed uploads, restore hash/corruption rejection.
 
-The harness is Linux/Termux-oriented (rclone fixture uses Unix permissions). It has 10-second API
-timeouts; test configuration must keep upstream retry budget below that. The fake rclone confirms
-command semantics only, not Google Drive bytes or OAuth. Endpoint mocks confirm importer contract
+The harness is Linux/Termux-oriented. It has 10-second API
+timeouts; test configuration must keep upstream retry budget below that. Endpoint mocks confirm importer contract
 only, not actual bank pagination. Native ARM64 deployment/lifecycle and local browser flows are verified separately; live providers
 remain release gates.
 
@@ -54,8 +53,6 @@ and external limits. Fault inputs are opt-in process environment variables, neve
   concurrent edit conflicts, snapshot during a long write, outbox coalescing and stale upload.
 - Dropbox expired access token refresh success/failure, Retry-After, upload session threshold,
   byte hash against manifest and stale manifest/DB publication failure. No infinite retries.
-- Hourly Drive restart catch-up, concurrent job lock, upload timeout, partial
-  DB/manifest mismatch; actual uploaded bytes must restore and match local revision.
 - Restore valid snapshot then compare user count and all category reports; reject
   future schema, preserve rollback file, refuse replacing a DB used by a running server.
 - Legacy reconciliation CLI ownership/identity conflict;
@@ -67,7 +64,7 @@ and external limits. Fault inputs are opt-in process environment variables, neve
   rate changes update totals; Monzo token clears on success/failure and never persists in storage;
   keyboard/touch entry; backup pending/failure/recovered indicator.
 - Live bank: verify object-ID pagination including ties, account binding and history window using
-  a fresh user-supplied token. Live Dropbox/Drive: disposable synthetic backup download/restore.
+  a fresh user-supplied token. Live Dropbox: disposable backup download/restore.
 - ARM build, memory measurements, graceful shutdown, supervised restart and long unattended run.
 
 Live-provider, ARM, actual phone monitoring and unattended-operation items remain unverified.

@@ -138,7 +138,7 @@ impl App {
         let config = dir.path().join("config.json");
         let monzo = Mock::new();
         let dropbox = Mock::new();
-        fs::write(&config,serde_json::to_vec(&json!({"monzo":{"base_url":monzo.url,"links_by_user_name":{"Matteo":"acc_test"}},"backup":{"directory":dir.path().join("backups"),"automatic":false,"dropbox":{"content_base_url":dropbox.url,"api_base_url":dropbox.url,"access_token":"synthetic-dropbox-token","root":"/posserver"},"drive":{"remote":"gdrive:posserver","interval_seconds":3600}}})).unwrap()).unwrap();
+        fs::write(&config,serde_json::to_vec(&json!({"monzo":{"base_url":monzo.url,"links_by_user_name":{"Matteo":"acc_test"}},"backup":{"directory":dir.path().join("backups"),"automatic":false,"dropbox":{"content_base_url":dropbox.url,"api_base_url":dropbox.url,"access_token":"synthetic-dropbox-token","root":"/posserver"}}})).unwrap()).unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         drop(listener);

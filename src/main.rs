@@ -91,14 +91,6 @@ enum Command {
         #[arg(long)]
         config: PathBuf,
     },
-    BackupDrive {
-        #[arg(long)]
-        db: PathBuf,
-        #[arg(long)]
-        config: PathBuf,
-        #[arg(long)]
-        force: bool,
-    },
     /// Exchange an offline OAuth authorization code from stdin and save private configuration.
     SetupDropbox {
         #[arg(long)]
@@ -186,10 +178,7 @@ fn main() {
             account_id,
         } => imports::reconcile(&db, &user, &transaction, &monzo_id, &account_id),
         Command::BackupDropbox { db, config } => {
-            Config::load(Some(&config)).and_then(|c| backup::run(&db, &c, "dropbox", true, None))
-        }
-        Command::BackupDrive { db, config, force } => {
-            Config::load(Some(&config)).and_then(|c| backup::run(&db, &c, "drive", force, None))
+            Config::load(Some(&config)).and_then(|c| backup::run(&db, &c, "dropbox", None))
         }
         Command::SetupDropbox { config } => backup::setup_dropbox(&config),
         Command::LinkMonzo {
@@ -269,21 +258,14 @@ async fn serve(path: PathBuf, bind: String, config: Config) -> Result<Value> {
     });
     let worker = app.clone();
     let backup_task = tokio::spawn(async move {
-        // Hourly Drive scheduling belongs to phome's existing scheduler. Catch up once on startup.
-        if worker.config.backup.automatic && worker.config.backup.drive.is_some() {
-            server_backup(worker.clone(), "drive", false).await;
-        }
         let mut timer = tokio::time::interval(Duration::from_secs(15));
         loop {
             let manual = tokio::select! {_=timer.tick()=>false,_=worker.wake.notified()=>false,_=worker.retry_wake.notified()=>true};
             if !worker.config.backup.automatic && !manual {
                 continue;
             }
-            if manual && worker.config.backup.drive.is_some() {
-                server_backup(worker.clone(), "drive", true).await;
-            }
             if worker.config.backup.dropbox.is_some() {
-                server_backup(worker.clone(), "dropbox", false).await;
+                server_backup(worker.clone(), "dropbox").await;
             } else {
                 let a = worker.clone();
                 let _ = tokio::task::spawn_blocking(move || {
@@ -340,10 +322,10 @@ async fn serve(path: PathBuf, bind: String, config: Config) -> Result<Value> {
     backup_task.abort();
     Ok(Value::Null)
 }
-async fn server_backup(app: App, provider: &'static str, force: bool) {
+async fn server_backup(app: App, provider: &'static str) {
     let _ = tokio::task::spawn_blocking(move || {
         let started = Instant::now();
-        let result = backup::run(&app.path, &app.config, provider, force, Some(&app.metrics));
+        let result = backup::run(&app.path, &app.config, provider, Some(&app.metrics));
         if !result.as_ref().is_ok_and(|v| v["skipped"] == true)
             && !result.as_ref().is_err_and(|e| e.code == "job_in_progress")
         {

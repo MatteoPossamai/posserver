@@ -111,7 +111,7 @@ fn metrics_baseline_types_and_scrapes_are_read_only_and_bounded() {
     }
     assert_eq!(sample(&text, "posserver_ready", &[]), 1.);
     assert_eq!(sample(&text, "posserver_current_revision", &[]), 0.);
-    for p in ["dropbox", "drive"] {
+    for p in ["dropbox"] {
         assert_eq!(
             sample(&text, "posserver_backup_configured", &[("provider", p)]),
             1.
@@ -291,12 +291,11 @@ fn unconfigured_backup_is_distinct_from_confirmed_success() {
     a.stop();
     let mut c = config(&a);
     c["backup"].as_object_mut().unwrap().remove("dropbox");
-    c["backup"].as_object_mut().unwrap().remove("drive");
     write_config(&a, &c);
     a.start();
     assert!(a.status()["dropbox_revision"].is_null());
     let m = metrics(&a);
-    for p in ["dropbox", "drive"] {
+    for p in ["dropbox"] {
         assert_eq!(
             sample(&m, "posserver_backup_configured", &[("provider", p)]),
             0.
@@ -799,112 +798,6 @@ fn concurrent_import_is_rejected_without_a_second_provider_request() {
     );
 }
 #[test]
-fn drive_uploaded_bytes_restore_and_partial_publication_never_claims_success() {
-    use std::os::unix::fs::PermissionsExt;
-    let a = App::new();
-    let u = a.user("Matteo", "personal", "UTC");
-    a.create(id(&u), "2026-10-01T00:00:00Z", -123, "groceries", "GBP");
-    let remote = a.dir.path().join("fake-drive");
-    fs::create_dir(&remote).unwrap();
-    let fake = a.dir.path().join("rclone");
-    fs::write(&fake,"#!/bin/sh\ncase \"$3\" in */manifest.json) [ \"$FAIL_MANIFEST\" = 1 ] && exit 1;; esac\ncp \"$2\" \"$FAKE_DRIVE/$(basename \"$3\")\"\n").unwrap();
-    fs::set_permissions(&fake, fs::Permissions::from_mode(0o700)).unwrap();
-    let run = |failure: &str| {
-        Command::new(bin())
-            .args(["backup-drive", "--db"])
-            .arg(&a.db)
-            .arg("--config")
-            .arg(&a.config)
-            .arg("--force")
-            .env("POSSERVER_RCLONE_BIN", &fake)
-            .env("FAKE_DRIVE", &remote)
-            .env("FAIL_MANIFEST", failure)
-            .output()
-            .unwrap()
-    };
-    output_json(&run("0"));
-    let saved = a.status()["drive_revision"].clone();
-    a.create(id(&u), "2026-10-01T00:00:01Z", -456, "rent", "GBP");
-    assert!(!run("1").status.success());
-    assert_eq!(a.status()["drive_revision"], saved);
-    let source = remote.join("database.sqlite");
-    let mf = remote.join("manifest.json");
-    let dest = a.dir.path().join("restored-drive.sqlite");
-    let args = [
-        "restore",
-        "--db",
-        dest.to_str().unwrap(),
-        "--snapshot",
-        source.to_str().unwrap(),
-        "--manifest",
-        mf.to_str().unwrap(),
-    ];
-    assert!(!a.cli(&args).status.success());
-    assert!(!dest.exists());
-    output_json(&run("0"));
-    output_json(&a.cli(&args));
-    let db = rusqlite::Connection::open(dest).unwrap();
-    assert_eq!(
-        db.query_row("SELECT COUNT(*) FROM transactions", [], |r| r
-            .get::<_, i64>(0))
-            .unwrap(),
-        2
-    );
-    assert_eq!(
-        db.query_row("SELECT SUM(amount_minor) FROM transactions", [], |r| r
-            .get::<_, i64>(0))
-            .unwrap(),
-        -579
-    );
-}
-#[test]
-fn drive_lock_skips_overlapping_jobs_and_overdue_restart_catches_up() {
-    use std::os::unix::fs::PermissionsExt;
-    let a = App::new();
-    a.user("Matteo", "personal", "UTC");
-    let fake = a.dir.path().join("rclone");
-    let log = a.dir.path().join("runs");
-    fs::write(
-        &fake,
-        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$POSSERVER_TEST_RCLONE_LOG\"\nexit 0\n",
-    )
-    .unwrap();
-    fs::set_permissions(&fake, fs::Permissions::from_mode(0o700)).unwrap();
-    let run = || {
-        Command::new(bin())
-            .args(["backup-drive", "--db"])
-            .arg(&a.db)
-            .arg("--config")
-            .arg(&a.config)
-            .env("POSSERVER_RCLONE_BIN", &fake)
-            .env("POSSERVER_TEST_RCLONE_LOG", &log)
-            .output()
-            .unwrap()
-    };
-    let lock = fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(a.db.with_extension("backup.lock"))
-        .unwrap();
-    FileExt::try_lock_exclusive(&lock).unwrap();
-    assert!(!run().status.success());
-    assert!(!log.exists());
-    FileExt::unlock(&lock).unwrap();
-    output_json(&run());
-    let before = fs::read(&log).unwrap();
-    assert_eq!(output_json(&run())["skipped"], true);
-    assert_eq!(fs::read(&log).unwrap(), before);
-    let db = rusqlite::Connection::open(&a.db).unwrap();
-    db.execute(
-        "UPDATE operational SET value='1' WHERE key='drive_success_at'",
-        [],
-    )
-    .unwrap();
-    output_json(&run());
-    assert!(fs::read(log).unwrap().len() > before.len());
-}
-#[test]
 fn dropbox_rate_limit_respects_bounded_retry_after() {
     use tiny_http::{Header, Response, Server, StatusCode};
     let a = App::new();
@@ -1125,38 +1018,12 @@ fn snapshot_disk_full_is_visible_and_retains_queue() {
     assert!(a.dropbox.requests().is_empty());
 }
 #[test]
-fn drive_timeout_kills_process_group_and_keeps_snapshot() {
-    use std::os::unix::fs::PermissionsExt;
-    let a = App::new();
-    a.user("Matteo", "personal", "UTC");
-    let fake = a.dir.path().join("rclone");
-    fs::write(&fake, "#!/bin/sh\nsleep 5\n").unwrap();
-    fs::set_permissions(&fake, fs::Permissions::from_mode(0o700)).unwrap();
-    let mut c = config(&a);
-    c["backup"]["drive"]["timeout_seconds"] = json!(1);
-    write_config(&a, &c);
-    let now = Instant::now();
-    let o = Command::new(bin())
-        .args(["backup-drive", "--db"])
-        .arg(&a.db)
-        .arg("--config")
-        .arg(&a.config)
-        .env("POSSERVER_RCLONE_BIN", &fake)
-        .output()
-        .unwrap();
-    assert!(!o.status.success());
-    assert!(now.elapsed() < Duration::from_secs(3));
-    assert!(a.status()["drive_revision"].is_null());
-    assert!(a.dir.path().join("backups/1.sqlite").exists());
-}
-#[test]
 fn automatic_worker_recovers_pending_queue_after_server_restart() {
     let mut a = App::new();
     a.user("Matteo", "personal", "UTC");
     a.stop();
     let mut c = config(&a);
     c["backup"]["automatic"] = json!(true);
-    c["backup"].as_object_mut().unwrap().remove("drive");
     write_config(&a, &c);
     for _ in 0..2 {
         a.dropbox.reply(200, json!({}));
@@ -1290,7 +1157,6 @@ fn explicit_retry_wakes_worker_with_automatic_disabled() {
     a.user("Matteo", "personal", "UTC");
     a.stop();
     let mut c = config(&a);
-    c["backup"].as_object_mut().unwrap().remove("drive");
     write_config(&a, &c);
     a.start();
     assert_eq!(a.status()["pending"], 1);

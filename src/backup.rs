@@ -42,10 +42,9 @@ impl Drop for Lock {
 }
 pub fn status(c: &Connection, config: &Config) -> Result<Value> {
     let dropbox = db::op(c, "dropbox_revision")?.and_then(|s| s.parse::<i64>().ok());
-    let drive = db::op(c, "drive_revision")?.and_then(|s| s.parse::<i64>().ok());
     let err = db::op(c, "last_error")?.and_then(|s| serde_json::from_str::<Value>(&s).ok());
     Ok(
-        json!({"current_revision":db::revision(c)?,"local_revision":db::op(c,"snapshot_revision")?.and_then(|s|s.parse::<i64>().ok()),"dropbox_revision":if config.backup.dropbox.is_some(){dropbox}else{None},"drive_revision":if config.backup.drive.is_some(){drive}else{None},"dropbox_configured":config.backup.dropbox.is_some(),"drive_configured":config.backup.drive.is_some(),"pending":c.query_row("SELECT COUNT(*) FROM backup_outbox WHERE state='pending'",[],|r|r.get::<_,i64>(0))?,"last_error":err,"drive_last_success_at":db::op(c,"drive_success_at")?.and_then(|s|s.parse::<i64>().ok()).and_then(|t|chrono::DateTime::from_timestamp(t,0)).map(|d|d.to_rfc3339_opts(chrono::SecondsFormat::Secs,true))}),
+        json!({"current_revision":db::revision(c)?,"local_revision":db::op(c,"snapshot_revision")?.and_then(|s|s.parse::<i64>().ok()),"dropbox_revision":if config.backup.dropbox.is_some(){dropbox}else{None},"dropbox_configured":config.backup.dropbox.is_some(),"pending":c.query_row("SELECT COUNT(*) FROM backup_outbox WHERE state='pending'",[],|r|r.get::<_,i64>(0))?,"last_error":err}),
     )
 }
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
@@ -274,88 +273,19 @@ fn upload(
         retry_count(path, "dropbox")?;
     }
 }
-fn rclone(
-    local: &Path,
-    remote: &str,
-    timeout: u64,
-    metrics: Option<&crate::metrics::Metrics>,
-) -> Result<()> {
-    let executable = std::env::var_os("POSSERVER_RCLONE_BIN").unwrap_or_else(|| "rclone".into());
-    use std::os::unix::process::CommandExt;
-    let mut child = std::process::Command::new(executable)
-        .process_group(0)
-        .arg("copyto")
-        .arg(local)
-        .arg(remote)
-        .args([
-            "--transfers",
-            "1",
-            "--checkers",
-            "1",
-            "--contimeout",
-            "5s",
-            "--timeout",
-            "15s",
-            "--retries",
-            "1",
-            "--low-level-retries",
-            "1",
-        ])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|_| Error::new(503, "rclone_unavailable"))?;
-    let start = Instant::now();
-    loop {
-        if let Some(exit) = child.try_wait()? {
-            return if exit.success() {
-                Ok(())
-            } else {
-                Err(Error::new(503, "drive_upload_failed"))
-            };
-        }
-        if metrics.is_some_and(|m| m.stopping.load(std::sync::atomic::Ordering::Relaxed))
-            || start.elapsed() > Duration::from_secs(timeout.clamp(1, 300))
-        {
-            unsafe { libc::kill(-(child.id() as i32), libc::SIGKILL) };
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(Error::new(503, "drive_timeout"));
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
 pub fn run(
     path: &Path,
     config: &Config,
     provider: &str,
-    force: bool,
     metrics: Option<&crate::metrics::Metrics>,
 ) -> Result<Value> {
     let resolved = db::resolve(path)?;
     let path = resolved.as_path();
-    if (provider == "dropbox" && config.backup.dropbox.is_none())
-        || (provider == "drive" && config.backup.drive.is_none())
-    {
+    if provider != "dropbox" || config.backup.dropbox.is_none() {
         return Err(Error::new(409, "backup_not_configured"));
     }
     let _lock = Lock::acquire(&path.with_extension("backup.lock"), false)?;
     let c = db::open(path)?;
-    if provider == "drive" && !force {
-        let last = db::op_number(&c, "drive_success_at")?;
-        if last > 0
-            && chrono::Utc::now().timestamp() - last
-                < config
-                    .backup
-                    .drive
-                    .as_ref()
-                    .unwrap()
-                    .interval_seconds
-                    .min(i64::MAX as u64) as i64
-        {
-            return Ok(json!({"revision":db::op_number(&c,"drive_revision")?,"skipped":true}));
-        }
-    }
     let pending: i64 = c.query_row(
         "SELECT COUNT(*) FROM backup_outbox WHERE state='pending'",
         [],
@@ -438,25 +368,6 @@ pub fn run(
                     &mut refreshed,
                     &format!("{}/manifest.json", d.root.trim_end_matches('/')),
                     &mf,
-                )?;
-            }
-            "drive" => {
-                let d = config.backup.drive.as_ref().unwrap();
-                let mut drive_manifest = m.clone();
-                drive_manifest.snapshot_path = None;
-                let drive_mf = file.with_extension("drive.json");
-                atomic_write(&drive_mf, &serde_json::to_vec(&drive_manifest).unwrap())?;
-                rclone(
-                    &file,
-                    &format!("{}/database.sqlite", d.remote.trim_end_matches('/')),
-                    d.timeout_seconds,
-                    metrics,
-                )?;
-                rclone(
-                    &drive_mf,
-                    &format!("{}/manifest.json", d.remote.trim_end_matches('/')),
-                    d.timeout_seconds,
-                    metrics,
                 )?;
             }
             _ => return Err(invalid()),
@@ -561,7 +472,6 @@ fn prune_local(path: &Path, config: &Config) -> Result<()> {
         if !pending {
             fs::remove_file(&p)?;
             let _ = fs::remove_file(config.directory(path).join(format!("{r}.json")));
-            let _ = fs::remove_file(config.directory(path).join(format!("{r}.drive.json")));
         }
     }
     Ok(())

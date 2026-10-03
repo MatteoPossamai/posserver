@@ -1,8 +1,28 @@
 # posserver
 
-Rust family finance service with a mobile English/Italian web interface, SQLite storage,
-exact currency conversion, a versioned API, one-use Monzo imports, CSV migration, durable
-Dropbox backups and Prometheus metrics. Google Drive support remains paused.
+A small family finance server. It stores transactions in one SQLite database on the phone and serves a mobile website plus a JSON API.
+
+## How it works
+
+```text
+Browser / API client
+        │ HTTP
+        ▼
+   posserver (Rust) ── writes ──► SQLite database
+        │                              │
+        ├── /metrics                   └── backup queue
+        │                                      │
+        ▼                                      ▼
+phome Prometheus/Grafana                 Dropbox snapshots
+```
+
+The database on the phone is the live copy. Each successful change and its backup-queue entry commit together. A background worker makes a checked SQLite snapshot and uploads it to Dropbox. A saved transaction remains saved if Dropbox is offline; the queue retries later.
+
+## API at a glance
+
+The versioned API is under `/api/v1`: users and settings, transactions, monthly reports, Monzo imports, and backup status/retry. `/healthz` reports readiness; `/metrics` serves operational metrics. There is no login. Anyone who can reach the server can view and change its data.
+
+## Run locally
 
 ```sh
 cargo build --locked
@@ -12,28 +32,17 @@ cp config/example.json data/posserver/config.json
   --bind 127.0.0.1:8080 --config "$PWD/data/posserver/config.json"
 ```
 
-Open `http://127.0.0.1:8080` and create a user. No bank or backup credentials are needed
-for manual entries and reports. Desktop requires `--db` or `POSSERVER_DATA_DIR`; Termux
-also defaults to `$PREFIX/data/posserver/database.sqlite`. The UI is embedded in the binary.
+Open `http://127.0.0.1:8080`. On Termux, the default database is `$PREFIX/data/posserver/database.sqlite`. The UI is embedded in the binary.
 
-Read [Matteo's operator setup](USER.md), [setup and operation](docs/operations.md), [API/CLI contracts](docs/api.md),
-[design](docs/design.md), [categories](docs/categories.json), [monitoring](docs/monitoring.md),
-and [implementation status](docs/implementation.md).
+## Set up the phone
 
-```sh
-POSSERVER_BIN="$PWD/target/debug/posserver" cargo test --locked --all-targets -- --test-threads=2
-cd tests/web
-npm ci
-npx playwright install chromium
-cd ../..
-scripts/check
-```
+Use [`scripts/phone`](scripts/phone) to deploy and manage the native Termux service. Follow [Dropbox setup and recovery](docs/dropbox.md) to configure and recover backups. If the phone or address changes, follow [move the server](docs/operations.md#move-the-server). Monitoring and public routes are in the neighboring `phome_srvr` repository; do not copy its configuration here.
 
-`scripts/check` builds and tests the real service, including a disposable browser server.
-The original `cargo test --test contract` interface is preserved. Missing binaries or
-browser dependencies fail explicitly. Fixtures are synthetic; tests do not establish live
-provider correctness or phone reliability. Native ARM64 deployment and basic lifecycle checks
-are verified separately in [implementation status](docs/implementation.md).
+## More detail
 
-Build and control the phone app with `scripts/phone deploy`, `start`, `stop`, `status` and
-`rollback`; see [SSH deployment](docs/operations.md#ssh-deployment-and-supervision).
+- [Dropbox setup and recovery](docs/dropbox.md) - human operator guide.
+- [Phone operation and restore](docs/operations.md) - commands and deployment details.
+- [API contract](docs/api.md), [monitoring contract](docs/monitoring.md), and [categories](docs/categories.json) - implementation references.
+- [Design](docs/design.md) - original behavior and Monzo planning; preserved as agreed.
+- [Implementation status](docs/implementation.md) - what was built and verified.
+- [AGENTS.md](AGENTS.md) - instructions for future agents.

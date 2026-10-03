@@ -92,9 +92,8 @@ setup should assign immutable user IDs once creation is complete. Do not auto-bi
 
 ## Backup status
 
-GET `/backups/status` -> 200 `{current_revision,local_revision,dropbox_revision,drive_revision,
-pending,last_error:null|{provider,code},drive_last_success_at:null|string}`.
-Unconfigured providers have null revisions and no claimed successful backup. GET does not write.
+GET `/backups/status` -> 200 `{current_revision,local_revision,dropbox_revision,dropbox_configured,pending,last_error:null|{provider,code}}`.
+An unconfigured Dropbox has a null revision and no claimed successful backup. GET does not write.
 POST `/backups/retry` -> 202 `{queued:true}` wakes worker, does not increment domain revision.
 
 ## Runtime/CLI expected by executable tests
@@ -107,8 +106,7 @@ starts until SIGTERM. Config JSON:
   "monzo":{"base_url":"http://127.0.0.1:MOCK","links_by_user_name":{"Matteo":"acc_test"}},
   "backup":{"directory":"/tmp/isolated/backups","automatic":false,
     "dropbox":{"content_base_url":"http://127.0.0.1:MOCK","api_base_url":"http://127.0.0.1:MOCK",
-      "access_token":"synthetic-dropbox-token","root":"/posserver"},
-    "drive":{"remote":"gdrive:posserver","interval_seconds":3600}}
+      "access_token":"synthetic-dropbox-token","root":"/posserver"}}
 }
 ```
 
@@ -124,12 +122,8 @@ exit 0 JSON `{inserted,duplicates,dry_run}`; repeated exact source returns inser
 original row count. Validation exit 2 JSON error, DB unchanged. Dry-run must not write/create
 DB if none exists; tests operate on existing DB with known user. Invalid user -> exit 2.
 
-`backup-dropbox --db PATH --config PATH` and `backup-drive --db PATH --config PATH`:
-one bounded attempt (with bounded refresh/retry), exit 0 JSON `{revision}` or nonzero JSON error.
-Drive runs inside the interval return exit 0 `{revision,skipped:true}` without invoking rclone.
-Drive command uses executable from `POSSERVER_RCLONE_BIN` if set (otherwise `rclone` on PATH),
-and fixed destination `REMOTE/database.sqlite` then `REMOTE/manifest.json`. It must respect
-interval_seconds; `--force` is available for an operator/test run. Lock covers concurrent calls.
+`backup-dropbox --db PATH --config PATH`: one bounded upload attempt with bounded refresh/retry,
+exit 0 JSON `{revision}` or nonzero JSON error. A lock prevents concurrent backup jobs.
 
 `restore --db DEST --snapshot SOURCE --manifest PATH`: stopped-server operation, exit 0 JSON
 `{restored:true,revision}` or exit 2 JSON error; failure preserves existing destination. Manifest:
@@ -154,7 +148,5 @@ exit 0 `{linked:true,revision}`. An identical repeat is a no-op; conflicts fail 
 atomically save private runtime JSON, exit 0 `{configured:true,provider:"dropbox",verified:false}`.
 No credential appears in output or process arguments. Synthetic endpoint overrides remain supported.
 
-`backup.drive.timeout_seconds` bounds each rclone subprocess (default 30, range 1–300).
 `automatic:false` suppresses timed/startup/write-triggered work; an explicit HTTP retry still runs.
-Status can report `last_error.provider:"local"` for snapshot retention errors; metrics provider
-labels remain the fixed `dropbox|drive` set. See operations.md for job bounds and setup limits.
+Status can report `last_error.provider:"local"` for snapshot retention errors; metrics provider label is the fixed `dropbox` value. See operations.md for job bounds and setup limits.

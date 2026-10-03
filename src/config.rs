@@ -34,7 +34,6 @@ pub struct Backup {
     pub directory: Option<PathBuf>,
     pub automatic: bool,
     pub dropbox: Option<Dropbox>,
-    pub drive: Option<Drive>,
 }
 impl Default for Backup {
     fn default() -> Self {
@@ -42,7 +41,6 @@ impl Default for Backup {
             directory: None,
             automatic: true,
             dropbox: None,
-            drive: None,
         }
     }
 }
@@ -69,21 +67,6 @@ impl Default for Dropbox {
             root: "/posserver".into(),
         }
     }
-}
-#[derive(Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Drive {
-    pub remote: String,
-    #[serde(default = "hour")]
-    pub interval_seconds: u64,
-    #[serde(default = "job_timeout")]
-    pub timeout_seconds: u64,
-}
-fn job_timeout() -> u64 {
-    30
-}
-fn hour() -> u64 {
-    3600
 }
 impl Config {
     pub fn load(path: Option<&Path>) -> Result<Self> {

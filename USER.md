@@ -6,7 +6,7 @@ This is the operator checklist for the personal posserver on the Android phone. 
 
 - The native ARM64 service runs on the phone under Termux runit; deployment and lifecycle use `scripts/phone`.
 - Matteo’s `transactions.csv` was imported once (1,698 transactions). The CSV remains the current reference/source of truth while this is a pre-production system. The database is a viewing copy; website edits do not update the CSV. There is no CSV watcher or ongoing CSV synchronization. Keep the original CSV unchanged. Do not rerun migration against a changed file; review and plan a deliberate import/cutover instead.
-- Dropbox backup is not configured. At the time this guide was written, seven revisions were pending backup; they remain pending until Dropbox is configured. Google Drive is paused and has no remote, credentials, or scheduled job.
+- Dropbox backup is configured and the first backup completed (revision 7; no pending revisions at the last check). Google Drive is paused and has no remote, credentials, or scheduled job.
 - Monzo account binding and API import are not configured. The current importer accepts a short-lived access token for a manual import; it does not store tokens or refresh them in the background.
 - Prometheus and Grafana now monitor the app using the phone’s existing monitoring services. See “Monitoring” below. Phone uptime and Android background reliability have not been proven over a long period or reboot.
 
@@ -18,52 +18,45 @@ The dashboard uses GBP reporting and the approved approximate EUR→GBP rate `0.
 2. From any internet connection, open <https://phome-public.tail1b8023.ts.net/>. For private access, open <http://100.108.243.40:8080> while signed into Tailscale. If neither works, check that the phone is awake and online, then from the repository run `scripts/phone status` and `ssh phone 'curl -fsS http://100.108.243.40:8080/healthz'`.
 3. The standard HTTPS Funnel route on port 443 is persistent and shares the existing Funnel node with Grafana on port 8443. Funnel makes the app reachable from the public internet; it does not add a login. Share the URL with the family members you trust.
 
+## What happens when you save a transaction
+
+1. The website sends the new transaction to posserver.
+2. Posserver saves the transaction and a “needs backup” entry together in one SQLite commit. When the website reports success, the transaction is safely saved on the phone; Dropbox may still be catching up.
+3. The background backup worker wakes and creates an integrity-checked snapshot of the database. It uploads that snapshot and then its manifest to Dropbox. Several quick saves may be covered by one newer snapshot rather than producing one Dropbox file per tap.
+4. After Dropbox confirms the files, posserver marks the covered backup entries complete. **Settings → Backups** then shows no pending revisions. If Dropbox is unavailable, the transaction remains saved on the phone, the backup remains pending, and posserver retries; a restart also resumes pending work.
+
+This backs up the SQLite database, including transactions entered on the website. It does not write those transactions into `transactions.csv`; that CSV remains a separate historical source file until you choose a production cutover.
+
 ## 2. Set up Dropbox backups
 
 Do this from the Dropbox account that should own the backup. The app creates immutable database snapshots and a manifest under its Dropbox app folder. This is a backup copy, not a CSV import or synchronization feature.
 
-1. Sign in to the [Dropbox App Console](https://www.dropbox.com/developers/apps) and create a scoped API app with **App folder** access. Give it a recognizable name such as `Matteo posserver`. App-folder access limits it to this app’s folder.
-2. In the app’s Permissions tab, enable `files.content.write` (needed to upload snapshots and remove old revisions). Apply/save the permission changes.
-3. In OAuth settings, choose the code flow. A redirect URI is optional for Dropbox; omitting it makes Dropbox show a one-time code to copy. If you choose a redirect URI, register it exactly and use that exact value below.
-4. Copy the app key and app secret from the console. Build the Dropbox authorization URL in your browser, replacing `APP_KEY`:
-
-   `https://www.dropbox.com/oauth2/authorize?client_id=APP_KEY&response_type=code&token_access_type=offline`
-
-   If using a redirect URI, URL-encode it and add `&redirect_uri=ENCODED_URI`. Approve access and copy the fresh authorization code from the redirect/page. The `token_access_type=offline` parameter is required so posserver can refresh access without asking you to sign in each time. Dropbox’s [OAuth guide](https://docs.dropboxapi.com/dropbox-api/docs/oauth) describes app creation, redirect matching, code flow, and offline refresh tokens.
-5. From the repository on the laptop, run the following Python prompt helper. It keeps the app secret and code out of shell history, command arguments, and a temporary file, then sends the JSON over SSH stdin directly to the phone’s setup command. Enter the redirect URI exactly as used above, or press Enter if none was used.
+1. In the [Dropbox App Console](https://www.dropbox.com/developers/apps), open your existing **posserver-data** app. Confirm it uses **App folder** access and enable `files.content.write` in Permissions. Save the change. Dropbox’s [OAuth guide](https://docs.dropboxapi.com/dropbox-api/docs/oauth) explains app permissions and offline OAuth.
+2. Regenerate the app secret in the console before continuing: the previous secret was pasted into chat. Do not send the replacement here.
+3. From the repository on your laptop, run:
 
    ```sh
-   python3 - <<'PY'
-   import getpass, json, subprocess
-
-   with open('/dev/tty', 'r+') as tty:
-       tty.write('Dropbox app key: '); tty.flush()
-       app_key = tty.readline().strip()
-       app_secret = getpass.getpass('Dropbox app secret: ', stream=tty)
-       code = getpass.getpass('Fresh Dropbox authorization code: ', stream=tty)
-       tty.write('Registered redirect URI (blank if none): '); tty.flush()
-       redirect_uri = tty.readline().strip()
-   payload = {'app_key': app_key, 'app_secret': app_secret,
-              'authorization_code': code}
-   if redirect_uri:
-       payload['redirect_uri'] = redirect_uri
-   command = '"$PREFIX/apps/posserver/current/posserver" setup-dropbox --config "$PREFIX/data/posserver/config.json"'
-   subprocess.run(['ssh', 'phone', command], input=json.dumps(payload).encode(), check=True)
-   PY
+   scripts/setup-dropbox --app-key 4dtr67zqh7xtwq2
    ```
 
-   The command prints setup status only. The app key, secret, and refresh token are saved in the phone’s private runtime config (`$PREFIX/data/posserver/config.json`, mode 600); that file is not in Git. Do not send credentials, authorization codes, or the config file in chat or email.
-6. Restart the app to load the new config: `scripts/phone restart`. Check `scripts/phone status`, then open **Settings → Backups** in the website. It should stop saying “Backup not configured.”
-7. Trigger a first upload from the laptop:
-
-   ```sh
-   ssh phone '"$PREFIX/apps/posserver/current/posserver" backup-dropbox --db "$PREFIX/data/posserver/database.sqlite" --config "$PREFIX/data/posserver/config.json"'
-   ```
-
-   Check **Settings → Backups** again. Confirm the Dropbox revision is current and pending/error counts are zero. Open the Dropbox app folder and verify the manifest and a revision snapshot exist. The CLI’s setup success alone does not prove a backup uploaded.
-8. Keep the newest two completed Dropbox snapshots. For a restore, download the matching snapshot and manifest from Dropbox to a private temporary directory, then follow [Restore](docs/operations.md#restore); never restore over the live database as a first check. Do a restore drill to a separate database before relying on the backup.
+   The helper prompts for the new secret without displaying it, opens Dropbox authorization, and requests offline access. Since you did not set a redirect URI, Dropbox will show a one-time code after you approve access. Paste that code into the helper’s hidden prompt. It sends the code and secret directly to the phone over SSH stdin, configures Dropbox, uploads the pending revisions, restarts posserver, and checks backup status. It does not save a local credential file or print the secret/code.
+4. Success ends with `pending revisions: 0`. Then open **Settings → Backups** and confirm Dropbox is configured and current. The phone stores the app credentials and refresh token in its private runtime config (`$PREFIX/data/posserver/config.json`, mode 600); that file is not in Git.
+5. Open the Dropbox app folder and confirm the manifest and revision snapshot exist. The service retains the newest two completed Dropbox snapshots. Before relying on these backups, do a restore drill to a separate database: download the matching snapshot and manifest to a private temporary directory, then follow [Restore](docs/operations.md#restore). Never test restore over the live database.
 
 Dropbox’s single-upload path currently rejects files over 150 MiB; resumable upload sessions are not implemented.
+
+### Keep a recovery copy of the phone config
+
+The database snapshot is in Dropbox, but the Dropbox refresh credential and other runtime settings are on the phone. Save an encrypted copy from the neighboring phome repository on the laptop:
+
+```sh
+cd ../phome_srvr
+scripts/backup-posserver-config
+```
+
+This asks for an Ansible Vault password and saves only encrypted data in phome. Store that password in your password manager. Repeat after changing posserver credentials or runtime settings. The phone’s live config remains plaintext with private permissions so the service can use it; the encrypted copy protects the recovery copy at rest. Full replacement-phone steps are in [phome’s recovery guide](../phome_srvr/docs/posserver-backup.md).
+
+If the phone dies, redeploy posserver to its replacement, restore config with `scripts/phone configure --vault ../phome_srvr/config/posserver-runtime.json.vault`, restart the service, then restore the latest Dropbox database snapshot using [the restore procedure](docs/operations.md#restore). The encrypted config does not contain transaction data.
 
 ## 3. Set up Monzo when ready to make it the live transaction source
 
@@ -85,7 +78,7 @@ Do not start a historical backfill blindly. The CSV is still the source of truth
 
 ## 4. Monitoring
 
-The existing phone Prometheus scrapes posserver every 15 seconds at `100.108.243.40:8080/metrics`. Grafana serves the app dashboard at <http://100.108.243.40:3000/d/posserver> and publicly at <https://phome-public.tail1b8023.ts.net:8443/d/posserver/posserver-application-health>. The phone-health dashboard’s **Service and collection health** panel also shows whether posserver is up; snapshot age has been removed from that panel. Other panels cover uptime, request rate/latency, database size, transaction/import counters, and backup attempts. The existing Telegram alerting sends notices for a down target, app readiness failure, Dropbox backup failure, or a configured Dropbox queue stuck for 15 minutes. The backup alerts stay quiet until Dropbox is configured.
+The existing phone Prometheus scrapes posserver every 15 seconds at `100.108.243.40:8080/metrics`. Grafana serves the app dashboard at <http://100.108.243.40:3000/d/posserver> and publicly at <https://phome-public.tail1b8023.ts.net:8443/d/posserver/posserver-application-health>. The phone-health dashboard’s **Service and collection health** panel also shows whether posserver is up; snapshot age has been removed from that panel. Other panels cover uptime, request rate/latency, database size, transaction/import counters, and backup attempts. The existing Telegram alerting sends notices for a down target, app readiness failure, Dropbox backup failure, or a configured Dropbox queue stuck for 15 minutes.
 
 For a quick check, open the dashboard and look for **Reachability and readiness** (scrape and ready should be 1), then **Backup attempts** after Dropbox is configured. Grafana/Prometheus monitor the app from the same phone, so they cannot report if Android kills Termux or the phone loses power/network. Phone background-kill and reboot recovery still need an operator check; do not treat this as independent outage alerting.
 

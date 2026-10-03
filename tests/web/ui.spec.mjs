@@ -168,9 +168,8 @@ for (const success of [true, false]) {
 test('backup indicator distinguishes pending and recovered revisions', async ({ page, request }) => {
   const u = await user(request); let pending = true;
   await page.route('**/api/v1/backups/status', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
-    current_revision: 8, local_revision: 8, dropbox_revision: pending ? 6 : 8, drive_revision: 5,
+    current_revision: 8, local_revision: 8, dropbox_revision: pending ? 6 : 8,
     pending: pending ? 2 : 0, last_error: pending ? { provider: 'dropbox', code: 'unavailable' } : null,
-    drive_last_success_at: '2026-10-01T10:00:00Z',
   }) }));
   await select(page, u);
   await expect(page.getByTestId('backup-status')).toHaveAttribute('data-pending', '2');

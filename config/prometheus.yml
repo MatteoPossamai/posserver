@@ -1,8 +1,0 @@
-# Scraped by the existing phone Prometheus service over private Tailscale.
-scrape_configs:
-  - job_name: posserver
-    scrape_interval: 15s
-    scrape_timeout: 3s
-    metrics_path: /metrics
-    static_configs:
-      - targets: ['100.108.243.40:8080']
